@@ -11,9 +11,6 @@ just 4KiB of committed memory. This means that this library is only available
 for 64-bit systems (currently Windows, Linux, macOS, and various BSD's) 
 as smaller systems do not have enough virtual address space.
 
-Since the gstacks are in-place growable (through virtual memory), these stacks are never
-moved, which ensures addresses to the stack stay valid (in their lexical scope).
-
 There are two libraries provided:
 
 - `libmprompt`: the primitive library that provides a minimal interface for
@@ -24,6 +21,38 @@ There are two libraries provided:
 
 - `libmphandler`: a small example library that uses `libmprompt` to implement
   efficient algebraic effect handlers in C (with a similar interface as [libhandler]).
+
+Particular aspects:
+
+- The goal is to be fully compatible with C/C++ semantics and to be able to
+  link to this library and use the multi-prompt abstraction _as is_ without special
+  considerations for signals, stack addresses, unwinding etc. 
+  In particular, this library has _address stability_: using the in-place 
+  growable gstacks (through virtual memory), these stacks are never moved, which ensures 
+  addresses to the stack are always valid (in their lexical scope). There is
+  also no special function prologue/epilogue needed as with [split stacks][split]
+
+- A drawback of this approach is that it requires 64-bit systems in order to have enough
+  virtual address space. Moreover, at miminum 4KiB of memory is committed per 
+  (active) prompt. On systems without "overcommit" we use internal _gpools_ to 
+  still be able to commit stack space on-demand using a special signal handler. 
+
+- We aim to support millions of prompts with fast yielding and resuming. If we run
+  the `mp_async_test1M` test (in `test/main.cpp`) we simulate an asynchronous
+  service which creates a fresh prompt on each connection, enters it and then suspends it
+  (simulating waiting for an async result).
+  Later it is resumed again where it calls a function that consumes 32KiB stack space, 
+  and finally returns. The test simulates 10 million connections with 10000 suspended 
+  prompts at any time:
+  ```
+  async_test1M set up...
+  run 10M connections with 10000 active at a time, each using 32kb stack...
+  total stack used: 312500.000mb, count=10000000
+  elapsed: 1.158s, user: 1.109s, sys: 0.049s, rss: 42mb, main rss: 39mb
+  ```
+  This is about 8M connections per second (single threaded, Ubuntu 20, AMD5950X),
+  where each connection creates a fresh prompt and context switches 4 times.
+
 
 Enjoy,
   Daan Leijen and KC S.
