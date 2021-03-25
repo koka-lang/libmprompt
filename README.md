@@ -43,7 +43,7 @@ Particular aspects:
   still be able to commit stack space on-demand using a special signal handler. 
 
 - We aim to support millions of prompts with fast yielding and resuming. If we run
-  the `mp_async_test1M` test (in [`test/main.c`](test/main.c)) we simulate an asynchronous
+  the `mp_async_test1M` test (in [`test/main.c`](test/main.c#L82)) we simulate an asynchronous
   service which creates a fresh prompt on each connection, enters it and then suspends it
   (simulating waiting for an async result).
   Later it is resumed again where it calls a function that consumes 32KiB stack space, 
