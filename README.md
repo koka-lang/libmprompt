@@ -26,7 +26,7 @@ There are two libraries provided:
   efficient algebraic effect handlers in C (with a similar interface as [libhandler]).
 
 Enjoy,
-  Daan Leijen and KC S.
+  Daan Leijen and KC Sivaramakrishnan.
 
 
 Todos:
