@@ -45,7 +45,6 @@ Particular aspects:
   and finally returns. The test simulates 10 million connections with 10000 suspended 
   prompts at any time:
   ```
-  async_test1M set up...
   run 10M connections with 10000 active at a time, each using 32kb stack...
   total stack used: 312500.000mb, count=10000000
   elapsed: 1.158s, user: 1.109s, sys: 0.049s, rss: 42mb, main rss: 39mb
