@@ -3,7 +3,7 @@
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
 Latest release: v0.1, 2021-03-25.
 
-A 64-bit C/C++ library that implements robust and efficient multi-prompt delimited control. 
+A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
 This is based on _in-place_ growable light-weight stacklets (called `gstack`s) which use 
 virtual memory to enable growing the stacklet (up to 8MiB) but start out using 
