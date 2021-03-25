@@ -1,7 +1,7 @@
 # libmprompt
 
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
-Latest release: v0.1, 2021-03-23.
+Latest release: v0.1, 2021-03-25.
 
 A 64-bit C/C++ library that implements robust and efficient multi-prompt delimited control. 
 
@@ -119,7 +119,7 @@ Evaluation context:
 E ::= []            # hole
    |  E e           # evaluate function first
    |  v E           # and then the argument 
-   |  @prompt m E   # we can evaluate under a prompt
+   |  @prompt m E   # we can evaluate under a prompt frame
 ```
 An evaluation context essentially describes the stack+registers where the hole is the current instruction pointer.
 
@@ -134,8 +134,8 @@ We can now keep evaluating inside an expression context using small step transit
 ```
 (APP)      (\x. e) v                ---->  e[x := v]                # beta-rule, application
 (NEWP)     prompt v                 ---->  @prompt m (v m)          # install a new prompt with a fresh marker `m`
-(PROMPT)   @prompt m v              ---->  v                        # returning a result discards the prompt
-(YIELD)    @prompt m E[yield m f]   ---->  f (\x. @prompt m E[x])   # yield to prompt `m`, capturing context `E`
+(PROMPT)   @prompt m v              ---->  v                        # returning a result discards the prompt frame
+(YIELD)    @prompt m E[yield m f]   ---->  f (\x. @prompt m E[x])   # yield to prompt frame `m`, capturing context `E`
 ```
 
 Note how in (YIELD) we yield with a function `f` to a prompt `m`. This
