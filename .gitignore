@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# Visual studio
+ide/vs20??/*.db
+ide/vs20??/*.opendb
+ide/vs20??/*.user
+ide/vs20??/*.vcxproj.filters
+ide/vs20??/.vs
+
+# Output folder
+out/
