@@ -5,7 +5,7 @@ Latest release: v0.1, 2021-03-25.
 
 A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
-This is based on _in-place_ growable light-weight stacklets (called `gstack`s) which use 
+The implementation is based on _in-place_ growable light-weight stacklets (called `gstack`s) which use 
 virtual memory to enable growing the stacklet (up to 8MiB) but start out using 
 just 4KiB of committed memory. This means that this library is only available 
 for 64-bit systems (currently Windows, Linux, macOS, and various BSD's) 
@@ -30,7 +30,12 @@ Particular aspects:
   In particular, this library has _address stability_: using the in-place 
   growable gstacks (through virtual memory), these stacks are never moved, which ensures 
   addresses to the stack are always valid (in their lexical scope). There is
-  also no special function prologue/epilogue needed as with [split stacks][split]
+  also no special function prologue/epilogue needed as with [split stacks][split].
+  
+- The multi-prompt abstraction has a precise semantics and is well-typed. This
+  also means there is always just one logical active stack (as a chain of
+  gstacks). This allows exceptions to propagate naturally and also provides
+  natural backtraces for any resumed prompt (todo).
 
 - A drawback of this approach is that it requires 64-bit systems in order to have enough
   virtual address space. Moreover, at miminum 4KiB of memory is committed per 
