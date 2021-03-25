@@ -63,6 +63,8 @@ Todos:
 - Fix exception propagation with MSVC in certain situations with multi-shot prompts.
 - ...
 
+[split] https://gcc.gnu.org/wiki/SplitStacks
+
 ## Building
 
 ### Linux and macOS
