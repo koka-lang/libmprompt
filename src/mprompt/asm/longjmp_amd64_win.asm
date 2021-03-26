@@ -159,21 +159,21 @@ mp_longjmp ENDP
 ; rdx: stack_commit_limit   (only used on windows for stack probes)
 ; r8 : stack_limit          (only used on windows for stack probes)
 ; r9 : fun
-; [rsp+40] : arg      (just above shadow space + return address)
+; [rsp+40] : arg            (just above shadow space + return address)
 ;
 ; On windows, gs points to the TIB: 
 ; - gs:8 contains the stack base (highest address), 
 ; - gs:16 the limit (lowest address)
 ; - gs:5240 the stack guarantee; set to limit on entry
 ; Before a call, we need to reserve 32 bytes of shadow space for the callee to spill registers in.
-mp_stack_enter PROC FRAME 
-  db      048h             ; emit a REX prefix for the single byte push (as per amd64 calling convention on windows)
+mp_stack_enter_bp PROC FRAME 
+  db      48h              ; rex prefix for single byte instruction
   push    rbp
 .pushreg rbp
   mov     rbp, rsp         ; rbp is old rsp + 8 on entry
 .setframe rbp, 0
-  sub     rsp, 40  
-.allocstack 40
+  sub     rsp, 32  
+.allocstack 32
 .endprolog
 
   mov     gs:[8], rcx      ; set new stack base
@@ -182,8 +182,9 @@ mp_stack_enter PROC FRAME
 
   and     rcx, NOT 15      ; align new stack base
   mov     rsp, rcx         ; switch the stack
-  push    rbp
-  sub     rsp, 40          ; home space + align
+  push    r11              ; help unwinding code
+  push    rbp             
+  sub     rsp, 32          ; home space + align
 
   mov     rcx, [rbp+48]    ; set arg from old stack
   call    r9               ; and call the function (it should never return but use longjmp)
@@ -194,7 +195,7 @@ mp_stack_enter PROC FRAME
   mov     rsp, rbp
   pop     rbp  
   ret  
-mp_stack_enter ENDP
+mp_stack_enter_bp ENDP
 
 
 ; Push a trap frame so it can be unwound
@@ -202,35 +203,36 @@ mp_stack_enter ENDP
 ; limits in the thread local TIB are not updated; 
 ; For exceptions we will need to catch and propagate manually through prompt points anyways.
 ; But perhaps this can become useful in the future?
-mp_stack_enter_trp PROC 
+mp_stack_enter PROC 
   ; save rsp in r10
-  mov     r10, rsp          
+  mov     r10, rsp 
+  mov     r11, [r10]        ; rip         
   
   ; switch stack
-  and     rcx, NOT 15
+  and     rcx, NOT 15       ; align
   mov     rsp, rcx
-  sub     rsp, 8            ; align
+  
+  push    r11               ; simulate call for unwinding
 
   ; for the trap frame, we only need to set rsp and rip:
-  ; <https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64?redirectedfrom=MSDN&view=msvc-160>
-  ; RSP+32 	SS              ; we use stack base
-  ; RSP+24 	Old RSP 
-  ; RSP+16 	EFLAGS          ; we use stack commit limit
-  ; RSP+8 	CS              ; we use stack reserved size (deallocation limit)
-  ; RSP 	  RIP  
+  ; <https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64>
+  ; RSP+32  SS              ; we use stack base
+  ; RSP+24  Old RSP 
+  ; RSP+16  EFLAGS          ; we use stack commit limit
+  ; RSP+8   CS              ; we use stack reserved size (deallocation limit)
+  ; RSP     RIP  
   push    rcx
-  lea     r11, [r10+8]      ; return rsp (minus return address)
-  push    r11               
+  lea     rax, [r10+8]      ; return rsp (minus return address)
+  push    rax               
   push    rdx
   push    r8
-  mov     r11, [r10]        ; return rip
-  push    r11               
-  ; and fall through    
-mp_stack_enter_trp ENDP  
+  push    r11               ; return rip
+  ; and fall through (with aligned stack)
+mp_stack_enter ENDP  
 
 mp_stack_enter_trap PROC FRAME
-.pushframe
-  sub     rsp, 32          ; reserve home area for calls
+.pushframe                 ; unwind rsp - 40
+  sub     rsp, 32          ; reserve home area for calls 
 .allocstack 32    
 .endprolog
 
@@ -243,7 +245,7 @@ mp_stack_enter_trap PROC FRAME
   call    r9               ; and call the function (which should never return but use longjmp)
   
   ; we should never reach this...
-  call    abort                              
+  call    abort           
 
   ; but if we return, we can return to the latest return point if the trap frame was updated
   mov     r11, [rsp + 32 + 0]   ; return rip  
@@ -255,6 +257,7 @@ mp_stack_enter_trap PROC FRAME
   mov     r10, [rsp + 32 + 8]   ; stack reserved limit
   mov     gs:[5240], r10
   jmp     r11                   ; and return 
+
 mp_stack_enter_trap ENDP
 
 END
