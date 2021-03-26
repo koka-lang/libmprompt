@@ -16,7 +16,8 @@
 ;
 ; bool  mp_setjmp(mp_jmpbuf_t* jmp);
 ; void  mp_longjmp(mp_jmpbuf_t* jmp);
-; void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, void (*fun)(void*), void* arg);
+; void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+;                      void (*fun)(void* arg,void* trapframe), void* arg);
 ;
 ; `mp_stack_enter` enters a fresh stack and runs `fun(arg)`
 ; ----------------------------------------------------------------------------------------------
@@ -153,27 +154,26 @@ mp_longjmp ENDP
 
 
 
-; void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, void (*fun)(void*), void* arg);
+; void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+;                       (*fun)(void* arg,void* trapframe), void* arg);
 ;
 ; rcx: stack_base
 ; rdx: stack_commit_limit   (only used on windows for stack probes)
 ; r8 : stack_limit          (only used on windows for stack probes)
-; r9 : fun
-; [rsp+40] : arg            (just above shadow space + return address)
+; r9 : jmpbuf_t**           pointer to return jmpbuf pointer; for now unused but may be used for unwinding
+; [rsp+40] : fun            (just above shadow space + return address)
+; [rsp+48] : arg              
 ;
 ; On windows, gs points to the TIB: 
 ; - gs:8 contains the stack base (highest address), 
 ; - gs:16 the limit (lowest address)
 ; - gs:5240 the stack guarantee; set to limit on entry
 ; Before a call, we need to reserve 32 bytes of shadow space for the callee to spill registers in.
-mp_stack_enter_bp PROC FRAME 
-  db      48h              ; rex prefix for single byte instruction
-  push    rbp
-.pushreg rbp
-  mov     rbp, rsp         ; rbp is old rsp + 8 on entry
-.setframe rbp, 0
-  sub     rsp, 32  
-.allocstack 32
+mp_stack_enter PROC FRAME 
+  mov     r10, rsp         ; old rsp
+  mov     r11, [rsp]       ; rip
+  sub     rsp, 40          ; home area + align
+.allocstack 40
 .endprolog
 
   mov     gs:[8], rcx      ; set new stack base
@@ -182,20 +182,23 @@ mp_stack_enter_bp PROC FRAME
 
   and     rcx, NOT 15      ; align new stack base
   mov     rsp, rcx         ; switch the stack
-  push    r11              ; help unwinding code
-  push    rbp             
-  sub     rsp, 32          ; home space + align
+  push    r11              ; help unwinding code by putting in return rip (remove?)
+  push    r9               ; save return jmpbuf_t**
+  sub     rsp, 32          ; home space 
 
-  mov     rcx, [rbp+48]    ; set arg from old stack
-  call    r9               ; and call the function (it should never return but use longjmp)
+  mov     rax, [r10+40]    ; fun
+  mov     rcx, [r10+48]    ; set arg from old stack
+  xor     rdx, rdx         ; no trap frame
+  call    rax              ; and call the function (it should never return but use longjmp)
   
   ; we should never reach this...
-  call    abort                              
+  call    abort        
 
-  mov     rsp, rbp
-  pop     rbp  
-  ret  
-mp_stack_enter_bp ENDP
+  mov     rcx, [rsp+40]    ; load return jmpbuf_t* in rcx
+  mov     rcx, [rcx]       
+  jmp     mp_longjmp
+
+mp_stack_enter ENDP
 
 
 ; Push a trap frame so it can be unwound
@@ -203,7 +206,7 @@ mp_stack_enter_bp ENDP
 ; limits in the thread local TIB are not updated; 
 ; For exceptions we will need to catch and propagate manually through prompt points anyways.
 ; But perhaps this can become useful in the future?
-mp_stack_enter PROC 
+mp_stack_enter_trp PROC 
   ; save rsp in r10
   mov     r10, rsp 
   mov     r11, [r10]        ; rip         
@@ -228,7 +231,7 @@ mp_stack_enter PROC
   push    r8
   push    r11               ; return rip
   ; and fall through (with aligned stack)
-mp_stack_enter ENDP  
+mp_stack_enter_trp ENDP  
 
 mp_stack_enter_trap PROC FRAME
 .pushframe                 ; unwind rsp - 40

@@ -12,8 +12,8 @@
 
 #include "mprompt.h"
 #include "internal/util.h"
-#include "internal/gstack.h"
 #include "internal/longjmp.h"
+#include "internal/gstack.h"
 
 #ifdef __cplusplus
 #include <exception>
@@ -39,7 +39,7 @@ typedef struct mp_resume_point_s {   // allocated on the suspended stack (which 
 } mp_resume_point_t;
 
 typedef struct mp_return_point_s {   // allocated on the parent stack (which performed an enter/resume)
-  mp_jmpbuf_t      jmp;
+  mp_jmpbuf_t      jmp;     // must be the first field (see `mp_stack_enter`)
   mp_return_kind_t kind;    
   void*            fun;     // if yielding, the function to execute
   void*            arg;     // if yielding, the argument to the function; if returning, the result.
@@ -240,7 +240,8 @@ typedef struct mp_entry_env_s {
   void* arg;
 } mp_entry_env_t;
 
-static  void mp_prompt_stack_entry_env(void* penv) {
+static  void mp_prompt_stack_entry_env(void* penv, void* trap_frame) {
+  MP_UNUSED(trap_frame);
   mp_entry_env_t* env = (mp_entry_env_t*)penv;
   mp_prompt_t* p = env->prompt;
   mp_prompt_stack_entry(p, env->fun, env->arg);
@@ -297,7 +298,7 @@ static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
     }
     else {
       // PI: initial entry, switch to the new stack with an initial function      
-      mp_gstack_enter(p->gstack, &mp_prompt_stack_entry_env, arg);
+      mp_gstack_enter(p->gstack, (mp_jmpbuf_t**)&p->return_point, &mp_prompt_stack_entry_env, arg);
     }
     mp_unreachable("mp_prompt_resume");    // should never return
   }

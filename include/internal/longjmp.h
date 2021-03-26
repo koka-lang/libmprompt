@@ -27,7 +27,7 @@
    masks. In those cases we try to substitute our own definitions.
 ------------------------------------------------------------------------------*/
 
-typedef void (mp_stack_start_fun_t)(void* arg);
+typedef void (mp_stack_start_fun_t)(void* arg, void* trap_frame);
 
 // A register context. Always has `reg_ip` and `reg_sp` members.
 typedef struct mp_jmpbuf_s mp_jmpbuf_t;
@@ -35,6 +35,7 @@ typedef struct mp_jmpbuf_s mp_jmpbuf_t;
 mp_decl_externc mp_decl_returns_twice  void* mp_setjmp(mp_jmpbuf_t* save_jmp);
 mp_decl_externc mp_decl_noreturn       void  mp_longjmp(mp_jmpbuf_t* jmp);
 mp_decl_externc mp_decl_noreturn       void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, 
+                                                            mp_jmpbuf_t** return_jmp,
                                                             mp_stack_start_fun_t* fun, void* arg);
 
 

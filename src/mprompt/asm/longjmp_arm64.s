@@ -16,7 +16,8 @@
   
     bool     mp_setjmp ( mp_jmp_buf_t jmp );
     void     mp_longjmp( mp_jmp_buf_t jmp );
-    void*    mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, void (*fun)(void*), void* arg);
+    void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+                         void (*fun)(void* arg, void* trapframe), void* arg);
     
   `mp_stack_enter` enters a fresh stack and runs `fun(arg)`; it also receives 
   a (pointer to a pointer to a) return jmpbuf to which it longjmp's on return.
@@ -117,18 +118,24 @@ mp_longjmp:
    x0: stack pointer, 
    x1: stack commit limit    (ignored on unix)
    x2: stack limit           (ignored on unix)
-   x3: function to run
-   x4: argument to pass to the function 
+   x3: jmpbuf_t** return point
+   x4: function to run
+   x5: argument to pass to the function 
 */
 mp_stack_enter:
   and     sp, x0, #~31          /* switch to the new stack (aligned down to 32 bytes) */
   sub     sp, sp, #32           /* sp = sp - 32 */
   stp     x29, x30, [sp, #16]   /* sp[24] = x30, sp[16] = lr */
+  str     x3, [sp, #8]          /* sp[8] = x3 */
   add     x29, sp, #16          /* set our frame pointer to sp[16] */
   
-  mov     x0, x4                /* argument to x0 */
-  bl      x3                    /* and call the function */
+  mov     x0, x5                /* argument to x0 */
+  mov     x1, #0                /* no trap frame */
+  bl      x4                    /* and call the function */
 
   /* should never get here */
   bl      abort
-    
+
+  ldr     x0, [sp, #8]
+  ldr     x0, [x0]
+  b       mp_longjmp

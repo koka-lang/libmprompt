@@ -15,8 +15,9 @@
   
     bool     mp_setjmp ( mp_jmp_buf_t jmpbuf );
     void     mp_longjmp( mp_jmp_buf_t jmpbuf );
-    void*    mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, void (*fun)(void*), void* arg);
- 
+    void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+                         void (*fun)(void* arg, void* trapframe), void* arg);
+
   `mp_stack_enter` enters a fresh stack and runs `fun(arg)`; it also receives 
   a (pointer to a pointer to a) return jmpbuf to which it longjmp's on return.
 -----------------------------------------------------------------------------*/
@@ -92,21 +93,29 @@ mp_longjmp:                  /* rdi: jmp_buf */
 
 
 
-/* switch stack 
+/* enter stack 
    rdi: gstack pointer, 
    rsi: stack commit limit    (ignored on unix)
    rdx: stack limit           (ignored on unix)
-   rcx: function to run
-   r8:  argument to pass to the function 
-   todo: provide dwarf backtrace
+   rcx: jmpbuf_t**            return jmpbuf indirect pointer
+   r8:  function to run
+   r9:  argument to pass to the function 
+
+   todo: provide dwarf backtrace information.
+         this should read the jmpbuf_t** to get the current 
+         return rsp and rip.
 */
 _mp_stack_enter:
 mp_stack_enter:
   andq    $~0x0F, %rdi     /* align down to 16 bytes */
   movq    %rdi, %rsp       /* and switch stack */  
   
-  movq    %r8, %rdi        /* pass the function argument */
-  callq   *%rcx            /* and call the function */
+  pushq   %rcx             /* save jmpbuf_t** */
+  subq    $8, %rsp         /* align stack */        
+
+  movq    %r9, %rdi        /* pass the function argument */
+  xorq    %rsi, %rsi       /* no trap frame */
+  callq   *%r8             /* and call the function */
   
   /* we should never get here... */
   #ifdef __MACH__
@@ -115,4 +124,6 @@ mp_stack_enter:
   callq   abort
   #endif
 
-
+  movq    8(%rsp), %rdi    /* load jmpbuf_t* and longjmp */
+  movq    (%rdi), %rdi
+  jmp     mp_longjmp        

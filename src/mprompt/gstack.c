@@ -227,7 +227,7 @@ void* mp_gstack_reserve(mp_gstack_t* g, size_t sz) {
 
 
 // Enter a gstack
-void mp_gstack_enter(mp_gstack_t* g, void (*fun)(void* arg), void* arg) {
+void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fun_t* fun, void* arg) {
   uint8_t* base = mp_gstack_base(g);
   uint8_t* base_commit_limit = mp_push(base, g->initial_commit, NULL);
   uint8_t* base_limit = mp_push(base, g->stack_size, NULL);
@@ -241,7 +241,7 @@ void mp_gstack_enter(mp_gstack_t* g, void (*fun)(void* arg), void* arg) {
     base_limit = base_commit_limit - os_page_size - mp_align_up(guaranteed, os_page_size);
   }
 #endif
-  mp_stack_enter(base_entry_sp, base_commit_limit, base_limit, fun, arg);
+  mp_stack_enter(base_entry_sp, base_commit_limit, base_limit, return_jmp, fun, arg);
 }
 
 
