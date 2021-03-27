@@ -149,6 +149,9 @@ target_include_directories(mprompt PUBLIC
 if (NOT WIN32)
   target_link_libraries(mprompt PUBLIC pthread)
 endif()
+if (APPLE)  
+  # target_link_options(mprompt PUBLIC -Wl,-no_compact_unwind -Wl,-keep_dwarf_unwind)
+endif()
 
 add_library(mphandler STATIC ${mphandler_sources})
 # set_property(TARGET mprompt PROPERTY POSITION_INDEPENDENT_CODE ON)

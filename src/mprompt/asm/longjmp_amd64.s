@@ -121,8 +121,12 @@ mp_longjmp:                  /* rdi: jmp_buf */
 _mp_stack_enter:
 mp_stack_enter:
   .cfi_startproc
+  movq    (%rsp), %r11        /* rip */
+  
+  /* switch stack */
   andq    $~0x0F, %rdi        /* align down to 16 bytes */
   movq    %rdi, %rsp          /* and switch stack */  
+  pushq   %r11                
 
   /* unwind info: set rbx, rbp, rsp, and rip from the current mp_jmpbuf_t return point 
      todo: can we do this more efficiently using more regular cfi directives? Perhaps we just need to load the jmpbuf ptr?
@@ -134,14 +138,20 @@ mp_stack_enter:
   .cfi_escape DW_expression, DW_REG_rbp, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 24 
   .cfi_escape DW_expression, DW_REG_rsp, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 16
   .cfi_escape DW_expression, DW_REG_rip, 3, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref
-  
-  pushq   %rbx                /* save non-volatile rbx */
+
+  /* use rbp to be more compatible with unwinding */
+  pushq   %rbp
   .cfi_adjust_cfa_offset 8 
-  .cfi_rel_offset %rbx, 0  
+  movq    %rsp, %rbp
+  .cfi_def_cfa_register %rbp 
+
+  pushq   %rbx                /* save non-volatile rbx */
+  .cfi_adjust_cfa_offset 8
+  /* .cfi_rel_offset %rbx, 0 */  /* hide to ensure unwinding uses the current rbx */
   movq    %rcx, %rbx          /* and put the jmpbuf_t** in rbx so it can be used for a backtrace */
   .cfi_register %rcx, %rbx 
   subq    $8, %rsp            /* align stack */
-  .cfi_adjust_cfa_offset 8  
+  .cfi_adjust_cfa_offset 8
   
   movq    %r9, %rdi           /* pass the function argument */
   xorq    %rsi, %rsi          /* no trap frame */
@@ -156,4 +166,8 @@ mp_stack_enter:
 
   movq    (%rbx), %rdi        /* load jmpbuf_t* and longjmp */
   jmp     mp_longjmp        
+
+  mov     %rbp, %rsp
+  pop     %rsp
+  ret
   .cfi_endproc
