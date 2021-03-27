@@ -104,6 +104,7 @@ mp_longjmp:                  /* rdi: jmp_buf */
 
 /* DWARF unwind info instructions: <http://dwarfstd.org/doc/DWARF5.pdf> 
    Register mapping: <https://refspecs.linuxbase.org/elf/x86_64-SysV-psABI.pdf> (page 36)
+                    (note the standard swaps the rbx and rdx registers)
 */
 #define DW_expression             0x10        
 #define DW_val_expression         0x16        
@@ -113,6 +114,8 @@ mp_longjmp:                  /* rdi: jmp_buf */
 #define DW_OP_lit(n)              (0x30+n)
 #define DW_OP_minus               0x1C
 #define DW_REG_rip                16
+#define DW_REG_rax                0
+#define DW_REG_rdx                1
 #define DW_REG_rcx                2
 #define DW_REG_rbx                3
 #define DW_REG_rbp                6
