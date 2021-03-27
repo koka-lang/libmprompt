@@ -169,7 +169,7 @@ mp_longjmp ENDP
 ; - gs:16 the limit (lowest address)
 ; - gs:5240 the stack guarantee; set to limit on entry
 ; Before a call, we need to reserve 32 bytes of shadow space for the callee to spill registers in.
-mp_stack_enter PROC FRAME 
+mp_stack_enter_plain PROC FRAME 
   mov     r10, rsp         ; old rsp
   mov     r11, [rsp]       ; rip
   sub     rsp, 40          ; home area + align
@@ -198,7 +198,7 @@ mp_stack_enter PROC FRAME
   mov     rcx, [rcx]       
   jmp     mp_longjmp
 
-mp_stack_enter ENDP
+mp_stack_enter_plain ENDP
 
 
 ; Push a trap frame so it can be unwound
@@ -206,10 +206,9 @@ mp_stack_enter ENDP
 ; limits in the thread local TIB are not updated; 
 ; For exceptions we will need to catch and propagate manually through prompt points anyways.
 ; But perhaps this can become useful in the future?
-mp_stack_enter_trp PROC 
-  ; save rsp in r10
-  mov     r10, rsp 
-  mov     r11, [r10]        ; rip         
+mp_stack_enter PROC FRAME
+  mov     r10, rsp          ; save rsp in r10
+  mov     r11, [r10]        ; rip     
   
   ; switch stack
   and     rcx, NOT 15       ; align
@@ -219,48 +218,42 @@ mp_stack_enter_trp PROC
 
   ; for the trap frame, we only need to set rsp and rip:
   ; <https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64>
-  ; RSP+32  SS              ; we use stack base
-  ; RSP+24  Old RSP 
-  ; RSP+16  EFLAGS          ; we use stack commit limit
-  ; RSP+8   CS              ; we use stack reserved size (deallocation limit)
-  ; RSP     RIP  
+  ; RSP+40  SS              ; we use stack base
+  ; RSP+32  Old RSP 
+  ; RSP+24  EFLAGS          ; we use stack commit limit
+  ; RSP+16  CS              ; we use stack reserved size (deallocation limit)
+  ; RSP+8   RIP  
+  ; RSP+0   error code      ; we use the return jmpbuf_t**
   push    rcx
   lea     rax, [r10+8]      ; return rsp (minus return address)
   push    rax               
   push    rdx
   push    r8
   push    r11               ; return rip
-  ; and fall through (with aligned stack)
-mp_stack_enter_trp ENDP  
+  push    r9                ; return point
+  ; and fall through (with un-aligned stack)
 
-mp_stack_enter_trap PROC FRAME
-.pushframe                 ; unwind rsp - 40
-  sub     rsp, 32          ; reserve home area for calls 
-.allocstack 32    
+.pushframe code            ; unwind rsp - 48
+  sub     rsp, 40          ; reserve home area for calls + align
+.allocstack 40    
 .endprolog
 
   mov     gs:[8], rcx      ; set new stack base
   mov     gs:[16], rdx     ; commit limit for stack probes (i.e. __chkstk)
   mov     gs:[5240], r8    ; (virtual) stack limit   
 
-  mov     rcx, [r10+40]    ; set arg from old stack
-  lea     rdx, [rsp+32]    ; set rdx to the trap frame... we should update rip/rsp if the return point changes.
-  call    r9               ; and call the function (which should never return but use longjmp)
+  mov     rax, [r10+40]    ; set fun from old stack
+  mov     rcx, [r10+48]    ; set arg from old stack
+  lea     rdx, [rsp+40]    ; set rdx to the trap frame address (so we can update it for unwinding/backtraces)
+  call    rax              ; and call the function (which should never return but use longjmp)
   
   ; we should never reach this...
   call    abort           
 
-  ; but if we return, we can return to the latest return point if the trap frame was updated
-  mov     r11, [rsp + 32 + 0]   ; return rip  
-  mov     rsp, [rsp + 32 + 24]  ; return rsp
-  mov     r10, [rsp + 32 + 32]  ; stack base
-  mov     gs:[8], r10
-  mov     r10, [rsp + 32 + 16]  ; stack commit limit
-  mov     gs:[16], r10
-  mov     r10, [rsp + 32 + 8]   ; stack reserved limit
-  mov     gs:[5240], r10
-  jmp     r11                   ; and return 
+  mov     rcx, [rsp+40]    ; load jmpbuf_t*
+  mov     rcx, [rcx]
+  jmp     mp_longjmp       ; and longjmp
 
-mp_stack_enter_trap ENDP
+mp_stack_enter ENDP
 
 END

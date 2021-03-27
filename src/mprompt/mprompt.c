@@ -244,7 +244,29 @@ static  void mp_prompt_stack_entry_env(void* penv, void* trap_frame) {
   MP_UNUSED(trap_frame);
   mp_entry_env_t* env = (mp_entry_env_t*)penv;
   mp_prompt_t* p = env->prompt;
-  mp_prompt_stack_entry(p, env->fun, env->arg);
+  //mp_prompt_stack_entry(p, env->fun, env->arg);
+  #ifdef __cplusplus
+  try {
+  #endif
+    void* result = (env->fun)(p, env->arg);
+    // RET: return from a prompt
+    mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
+    ret->arg = result;
+    ret->fun = NULL;
+    ret->kind = MP_RETURN;
+    mp_longjmp(&ret->jmp);
+  #ifdef __cplusplus
+  }
+  catch (...) {
+    mp_trace_message("catch exception to propagate across the prompt %p..\n", p);
+    mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
+    ret->exn = std::current_exception();
+    ret->arg = NULL;
+    ret->fun = NULL;
+    ret->kind = MP_EXCEPTION;
+    mp_longjmp(&ret->jmp);
+  }
+  #endif  
 }
 
 // Execute the function that is yielded or return normally.
@@ -500,12 +522,6 @@ void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
 
 //#ifdef _WIN32
 //#include <windows.h>
-//static mp_decl_noinline uint8_t* mp_win_sp(void) {
-//  return (uint8_t*)_AddressOfReturnAddress() + 8;
-//}
-//void mp_test_start(void* arg) {
-//  printf("hi\n");
-//}
 //void mp_throw_prepare(void) {
 //  NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
 //  tib->StackBase = ((uint64_t*)NULL - 1);

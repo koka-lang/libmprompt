@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
   amb_run();
   amb_state_run();
   nqueens_run();
-  // throw_run();  // fails in msvc debug mode after amb_state_run
+  //throw_run();  // fails in msvc debug mode after amb_state_run
 
   // mprompt tests
   //mp_async_test1M();  // async workers
