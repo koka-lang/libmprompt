@@ -126,6 +126,7 @@ mp_stack_enter:
 
   /* unwind info: set rbx, rbp, rsp, and rip from the current mp_jmpbuf_t return point 
      todo: can we do this more efficiently using more regular cfi directives? Perhaps we just need to load the jmpbuf ptr?
+     todo: on macOS, this seems to trigger a bug when running in lldb on a throw
      note: the expression calculates the _address_ that contains the new value of the target register.
            the return jmpbuf_t* is: (%rbx) == DW_OP_breg(DW_REG_rbx), 0, DW_OP_DEREF
   */
@@ -138,7 +139,7 @@ mp_stack_enter:
   .cfi_adjust_cfa_offset 8 
   .cfi_rel_offset %rbx, 0  
   movq    %rcx, %rbx          /* and put the jmpbuf_t** in rbx so it can be used for a backtrace */
-  .cfi_register %rcx, %rbx
+  .cfi_register %rcx, %rbx 
   subq    $8, %rsp            /* align stack */
   .cfi_adjust_cfa_offset 8  
   

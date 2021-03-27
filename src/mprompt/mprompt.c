@@ -208,31 +208,6 @@ static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_poin
 //-----------------------------------------------------------------------
 
 // Initial stack entry
-static  mp_decl_noinline void mp_prompt_stack_entry(mp_prompt_t* p, mp_start_fun_t* fun, void* arg) {  
-#ifdef __cplusplus
-  try {
-#endif
-    void* result = fun(p, arg);
-    // RET: return from a prompt
-    mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
-    ret->arg = result;
-    ret->fun = NULL;
-    ret->kind = MP_RETURN;
-    mp_longjmp(&ret->jmp);
-#ifdef __cplusplus
-  }
-  catch (...) {
-    mp_trace_message("catch exception to propagate across the prompt %p..\n", p);
-    mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
-    ret->exn = std::current_exception();
-    ret->arg = NULL;
-    ret->fun = NULL;
-    ret->kind = MP_EXCEPTION;
-    mp_longjmp(&ret->jmp);
-  }
-#endif  
-}
-
 
 typedef struct mp_entry_env_s {
   mp_prompt_t* prompt;
@@ -240,7 +215,7 @@ typedef struct mp_entry_env_s {
   void* arg;
 } mp_entry_env_t;
 
-static  void mp_prompt_stack_entry_env(void* penv, void* trap_frame) {
+static  void mp_prompt_stack_entry(void* penv, void* trap_frame) {
   MP_UNUSED(trap_frame);
   mp_entry_env_t* env = (mp_entry_env_t*)penv;
   mp_prompt_t* p = env->prompt;
@@ -320,7 +295,7 @@ static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
     }
     else {
       // PI: initial entry, switch to the new stack with an initial function      
-      mp_gstack_enter(p->gstack, (mp_jmpbuf_t**)&p->return_point, &mp_prompt_stack_entry_env, arg);
+      mp_gstack_enter(p->gstack, (mp_jmpbuf_t**)&p->return_point, &mp_prompt_stack_entry, arg);
     }
     mp_unreachable("mp_prompt_resume");    // should never return
   }
