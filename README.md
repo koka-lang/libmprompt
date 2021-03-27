@@ -32,10 +32,10 @@ Particular aspects:
   addresses to the stack are always valid (in their lexical scope). There is
   also no special function prologue/epilogue needed as with [split stacks][split].
   
-- The multi-prompt abstraction has a precise semantics and is well-typed. This
+- The multi-prompt abstraction has a precise [semantics] and is well-typed. This
   also means there is always just one logical active stack (as a chain of
   gstacks). This allows exceptions to propagate naturally and also provides
-  natural backtraces for any resumed prompt (todo).
+  natural [backtraces] for any resumed prompt (todo).
 
 - A drawback of this approach is that it requires 64-bit systems in order to have enough
   virtual address space. Moreover, at miminum 4KiB of memory is committed per 
@@ -70,7 +70,8 @@ Todos:
 
 [split]: https://gcc.gnu.org/wiki/SplitStacks
 [libhandler]: https://github.com/koka-lang/libhandler
-
+[backtraces]: #backtraces
+[semantics]: #semantics
 
 ## Building
 
@@ -97,7 +98,7 @@ We use Visual Studio 2019 to develop the library -- open the solution
 in `ide/vs2019/libmprompt.sln` to build and test.
 
 
-## The libmprompt Interface
+## Libmprompt
 
 ### C Interface
 
@@ -362,10 +363,23 @@ also how exceptions are propagated):  (rule (PROMPT))
                                                 .            .
 ```
 
+### Backtraces
+
 A nice property of muli-prompts is that there is always
 a single strand of execution, together with suspended prompts.
 The list of prompts form the logical stack and we can have 
 natural propagation of exceptions with proper backtraces.
+
+Here is an example of a backtrace on Linux:
+
+![backtrace](doc/backtrace.jpg)
+
+Here a breakpoint was set in code that was resumed
+where the backtrace continues into the main stack. This is quite nice
+for debugging compared to callback based programming for example.
+
+(Unfortunately, backtraces are not yet working on Windows,
+and on macOS debugging in `lldb` has trouble unwinding on a `throw`).
 
 
 ## The libmphandler Interface
