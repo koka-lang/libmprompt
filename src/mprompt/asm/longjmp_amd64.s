@@ -97,21 +97,18 @@ mp_longjmp:                  /* rdi: jmp_buf */
    rdi: gstack pointer, 
    rsi: stack commit limit    (ignored on unix)
    rdx: stack limit           (ignored on unix)
-   rcx: jmpbuf_t**            return jmpbuf indirect pointer
+   rcx: jmpbuf_t**            return jmpbuf indirect pointer (used for backtraces only)
    r8:  function to run
    r9:  argument to pass to the function 
-
-   todo: provide dwarf backtrace information.
-         this should read the jmpbuf_t** to get the current 
-         return rsp and rip.
 */
 
-/* DWARF unwind info instructions: <http://dwarfstd.org/doc/DWARF5.pdf> */
-#define DW_CFA_expression         0x10
-#define DW_CFA_val_expression     0x16
+/* DWARF unwind info instructions: <http://dwarfstd.org/doc/DWARF5.pdf> 
+   Register mapping: <https://refspecs.linuxbase.org/elf/x86_64-SysV-psABI.pdf> (page 36)
+*/
+#define DW_expression             0x10        
+#define DW_val_expression         0x16        
 #define DW_OP_deref               0x06        
 #define DW_OP_breg(r)             (0x70+r)    /* push `register + ofs` */
-#define DW_OP_constu              0x10
 #define DW_OP_plus_uconst         0x23
 #define DW_OP_lit(n)              (0x30+n)
 #define DW_OP_minus               0x1C
@@ -124,26 +121,30 @@ mp_longjmp:                  /* rdi: jmp_buf */
 _mp_stack_enter:
 mp_stack_enter:
   .cfi_startproc
-  andq    $~0x0F, %rdi     /* align down to 16 bytes */
-  movq    %rdi, %rsp       /* and switch stack */  
+  andq    $~0x0F, %rdi        /* align down to 16 bytes */
+  movq    %rdi, %rsp          /* and switch stack */  
 
-  pushq   %rbx             /* save non-volatile rbx */
-  /* .cfi_adjust_cfa_offset 8 */
-  /* .cfi_rel_offset %rbx, 0  */
-  movq    %rcx, %rbx       /* save rcx in the non-volatile rbx register for unwind info */
-  subq    $8, %rsp         /* align stack */
-  /* .cfi_adjust_cfa_offset 8 */
-
-  /* unwind info: set rbx, rbp, rsp, and rip from the current mp_jmpbuf_t return point */
-  /* todo: can we do this more efficiently using more regular cfi directives? Perhaps we just need to load the jmpbuf ptr?*/
-  .cfi_escape DW_CFA_expression, DW_REG_rbx, 5 /*size*/, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 8
-  .cfi_escape DW_CFA_expression, DW_REG_rbp, 5 /*size*/, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 24 
-  .cfi_escape DW_CFA_expression, DW_REG_rsp, 5 /*size*/, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 16
-  .cfi_escape DW_CFA_expression, DW_REG_rip, 3 /*size*/, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref
+  /* unwind info: set rbx, rbp, rsp, and rip from the current mp_jmpbuf_t return point 
+     todo: can we do this more efficiently using more regular cfi directives? Perhaps we just need to load the jmpbuf ptr?
+     note: the expression calculates the _address_ that contains the new value of the target register.
+           the return jmpbuf_t* is: (%rbx) == DW_OP_breg(DW_REG_rbx), 0, DW_OP_DEREF
+  */
+  .cfi_escape DW_expression, DW_REG_rbx, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 8
+  .cfi_escape DW_expression, DW_REG_rbp, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 24 
+  .cfi_escape DW_expression, DW_REG_rsp, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 16
+  .cfi_escape DW_expression, DW_REG_rip, 3, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref
   
-  movq    %r9, %rdi        /* pass the function argument */
-  xorq    %rsi, %rsi       /* no trap frame */
-  callq   *%r8             /* and call the function */
+  pushq   %rbx                /* save non-volatile rbx */
+  .cfi_adjust_cfa_offset 8 
+  .cfi_rel_offset %rbx, 0  
+  movq    %rcx, %rbx          /* and put the jmpbuf_t** in rbx so it can be used for a backtrace */
+  .cfi_register %rcx, %rbx
+  subq    $8, %rsp            /* align stack */
+  .cfi_adjust_cfa_offset 8  
+  
+  movq    %r9, %rdi           /* pass the function argument */
+  xorq    %rsi, %rsi          /* no trap frame */
+  callq   *%r8                /* and call the function */
   
   /* we should never get here (but the called function should longjmp, see `mprompt.c:mp_mprompt_stack_entry`) */
   #ifdef __MACH__
@@ -152,7 +153,6 @@ mp_stack_enter:
   callq   abort
   #endif
 
-  movq    8(%rsp), %rdi    /* load jmpbuf_t* and longjmp */
-  movq    (%rdi), %rdi
+  movq    (%rbx), %rdi        /* load jmpbuf_t* and longjmp */
   jmp     mp_longjmp        
   .cfi_endproc
