@@ -173,8 +173,8 @@ mp_stack_enter_plain PROC FRAME
   mov     r10, rsp         ; old rsp
   mov     r11, [rsp]       ; rip
   sub     rsp, 40          ; home area + align
-.allocstack 40
-.endprolog
+.ALLOCSTACK 40
+.ENDPROLOG
 
   mov     gs:[8], rcx      ; set new stack base
   mov     gs:[16], rdx     ; commit limit for stack probes (i.e. __chkstk)
@@ -233,10 +233,10 @@ mp_stack_enter PROC FRAME
   push    r9                ; return point
   ; and fall through (with un-aligned stack)
 
-.pushframe code            ; unwind rsp - 48
+.PUSHFRAME code            ; unwind rsp - 48
   sub     rsp, 40          ; reserve home area for calls + align
-.allocstack 40    
-.endprolog
+.ALLOCSTACK 40    
+.ENDPROLOG
 
   mov     gs:[8], rcx      ; set new stack base
   mov     gs:[16], rdx     ; commit limit for stack probes (i.e. __chkstk)

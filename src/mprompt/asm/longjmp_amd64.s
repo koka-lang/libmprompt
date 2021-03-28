@@ -120,9 +120,62 @@ mp_longjmp:                  /* rdi: jmp_buf */
 #define DW_REG_rbx                3
 #define DW_REG_rbp                6
 #define DW_REG_rsp                7
+#define DW_REG_r15                15
 
 _mp_stack_enter:
 mp_stack_enter:
+  
+  /* switch stack */
+  andq    $~0x0F, %rdi        /* align down to 16 bytes */
+  movq    %rdi, %rsp          /* and switch stack */
+  pushq   %rcx                /* align */
+  pushq   %rcx                /* save jmpbuf_t** */
+  call    mp_stack_enter_switch
+
+
+mp_stack_enter_switch:
+  .cfi_startproc 
+  .cfi_signal_frame  
+  .cfi_remember_state
+
+  pushq   %rbp                
+  .cfi_adjust_cfa_offset 8
+  .cfi_rel_offset rbp, 0
+  movq    %rsp, %rbp
+
+  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 16, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (16(%rsp)) */  
+  /* .cfi_escape DW_def_cfa_expression, 3, DW_OP_breg(DW_REG_r15), 0, DW_OP_deref */ /* cfa = 0(%r15) */  
+  .cfi_offset rip, 0
+  .cfi_offset rbx, 8  
+  .cfi_offset rsp, 16
+  .cfi_offset rbp, 24
+  .cfi_offset r12, 32
+  .cfi_offset r13, 40
+  .cfi_offset r14, 48
+  .cfi_offset r15, 56
+  .cfi_return_column rip
+    
+  movq    %r9, %rdi           /* pass the function argument */
+  movq    %rsp, %rsi          /* pass address of old rbp as trap frame */
+  callq   *%r8                /* and call the function */
+  
+  /* we should never get here (but the called function should longjmp, see `mprompt.c:mp_mprompt_stack_entry`) */
+  #ifdef __MACH__
+  callq   _abort
+  #else
+  callq   abort
+  #endif
+
+  .cfi_restore_state
+  movq    16(%rsp), %rdi        /* load indirect jmpbuf_t* and longjmp */
+  movq    (%rdi), %rdi
+  jmp     mp_longjmp        
+
+  .cfi_endproc
+
+
+_mp_stack_enter_signal:
+mp_stack_enter_signal:
   .cfi_startproc  
   .cfi_signal_frame
   movq    (%rsp), %r11        /* rip */
@@ -167,8 +220,8 @@ mp_stack_enter:
 
 
 
-_mp_stack_enterx:
-mp_stack_enterx:
+_mp_stack_enter_nosignal:
+mp_stack_enter_nosignal:
   .cfi_startproc  
   movq    (%rsp), %r11        /* rip */
   
