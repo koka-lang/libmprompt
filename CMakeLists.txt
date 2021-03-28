@@ -114,7 +114,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
 endif()
 
 if(APPLE)
-  list(APPEND mp_cflags -fno-omit-frame-pointer)
+  # list(APPEND mp_cflags -fasynchronous-unwind-tables)
 endif()
 
 if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
@@ -155,6 +155,7 @@ if (NOT WIN32)
 endif()
 if (APPLE)  
   # target_link_options(mprompt PUBLIC -Wl,-no_compact_unwind -Wl,-keep_dwarf_unwind)
+  # target_link_options(mprompt PUBLIC -Wl,-no_keep_dwarf_unwind)
 endif()
 
 add_library(mphandler STATIC ${mphandler_sources})
