@@ -108,8 +108,8 @@ mp_longjmp:                  /* rdi: jmp_buf */
 #define DW_def_cfa_expression     0x0F  
 #define DW_expression             0x10      
 #define DW_val_expression         0x16        
-#define DW_OP_deref               0x06        
-#define DW_OP_breg(r)             (0x70+r)    /* push `register + ofs` */
+#define DW_OP_deref               0x06        /* dereference the top of the expression stack */
+#define DW_OP_breg(r)             (0x70+r)    /* push `register + ofs` on the expression stack */
 #define DW_OP_plus_uconst         0x23
 #define DW_OP_lit(n)              (0x30+n)
 #define DW_OP_minus               0x1C
@@ -131,23 +131,24 @@ mp_stack_enter:
   /* switch stack */
   andq    $~0x0F, %rdi        /* align down to 16 bytes */
   movq    %rdi, %rsp          /* and switch stack */
-  pushq   %rcx                /* align */
-  pushq   %rcx                /* save jmpbuf_t** */
+  xorq    %rax, %rax
   pushq   %rax                /* old rip */
-  jmp     mp_stack_entry
+  jmp     mp_stack_entry      
   
+  /* entry on a new stack */
 mp_stack_entry:
   .cfi_startproc 
-  .cfi_signal_frame
+  .cfi_signal_frame           /* needed or else gdb does not allow swithing frames to a lower address */
+  
+  pushq   %rcx                /* push jmpbuf_t** for unwinding */  
+  .cfi_adjust_cfa_offset 8   
   .cfi_remember_state
   
-  pushq   %rbp               /* previous rbp, should be updated via trap frame parameter */  
-  .cfi_adjust_cfa_offset 8   
-  .cfi_rel_offset rbp, 0    
-  /* movq    %rsp, %rbp  */
-  
-  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 16, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (16(%rsp)) */  
-  /* .cfi_escape DW_def_cfa_expression, 3, DW_OP_breg(DW_REG_r15), 0, DW_OP_deref */ /* cfa = 0(%r15) */  
+  /* Set the cfa to point to our return jmpbuf_t (instead of into the stack); 
+     the previous registers can now be restored (during unwind) using .cfi_restore directives 
+     Todo: on macOS, this seems to trigger a bug in libunwind when running the program inside `lldb` on a `throw`
+  */
+  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (0(%rsp)) */  
   .cfi_offset rip, 0
   .cfi_offset rbx, 8  
   .cfi_offset rsp, 16
@@ -159,7 +160,7 @@ mp_stack_entry:
   .cfi_return_column rip
   
   movq    %r9, %rdi           /* pass the function argument */
-  movq    %rsp, %rsi          /* pass address of old rbp as trap frame */
+  movq    %rsp, %rsi          
   callq   *%r8                /* and call the function */
   
   /* we should never get here (but the called function should longjmp, see `mprompt.c:mp_mprompt_stack_entry`) */
@@ -170,7 +171,7 @@ mp_stack_entry:
   #endif
 
   .cfi_restore_state
-  movq    16(%rsp), %rdi        /* load indirect jmpbuf_t* and longjmp */
+  movq    %rsp, %rdi          /* load indirect jmpbuf_t* and longjmp */
   movq    (%rdi), %rdi
   jmp     mp_longjmp        
   .cfi_endproc
@@ -216,61 +217,6 @@ mp_stack_enter_signal:
   .cfi_restore_state
   movq    (%rsp), %rdi        /* load jmpbuf_t* and longjmp */
   movq    (%rdi), %rdi
-  jmp     mp_longjmp        
-
-  .cfi_endproc
-
-
-
-_mp_stack_enter_nosignal:
-mp_stack_enter_nosignal:
-  .cfi_startproc  
-  movq    (%rsp), %r11        /* rip */
-  
-  /* switch stack */
-  andq    $~0x0F, %rdi        /* align down to 16 bytes */
-  movq    %rdi, %rsp          /* and switch stack */  
-  
-  /* unwind info: set rbx, rbp, rsp, and rip from the current mp_jmpbuf_t return point 
-     todo: on macOS, this seems to trigger a bug when running in lldb on a throw
-     note: the expression calculates the _address_ that contains the new value of the target register.
-           the return jmpbuf_t* is: (%rbx) == DW_OP_breg(DW_REG_rbx), 0, DW_OP_DEREF
-  */
-  .cfi_escape DW_expression, DW_REG_rbx, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 8
-  .cfi_escape DW_def_cfa_expression,     5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 16
-  .cfi_escape DW_expression, DW_REG_rbp, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 24 
-  .cfi_escape DW_expression, DW_REG_rip, 3, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref
-
-  pushq   %r11                
-  .cfi_def_cfa_offset 8
-
-  /* use rbp to be more compatible with unwinding */
-  pushq   %rbp
-  .cfi_def_cfa_offset 16
-  .cfi_offset rbp, -16
-  movq    %rsp, %rbp
-  .cfi_def_cfa_register rbp 
-
-  pushq   %rbx                /* save non-volatile rbx */
-  .cfi_adjust_cfa_offset 8
-  /* .cfi_rel_offset %rbx, 0 */  /* hide to ensure unwinding uses the current rbx */
-  movq    %rcx, %rbx          /* and put the jmpbuf_t** in rbx so it can be used for a backtrace */
-  .cfi_register rcx, rbx 
-  subq    $8, %rsp            /* align stack */
-  .cfi_adjust_cfa_offset 8
-  
-  movq    %r9, %rdi           /* pass the function argument */
-  xorq    %rsi, %rsi          /* no trap frame */
-  callq   *%r8                /* and call the function */
-  
-  /* we should never get here (but the called function should longjmp, see `mprompt.c:mp_mprompt_stack_entry`) */
-  #ifdef __MACH__
-  callq   _abort
-  #else
-  callq   abort
-  #endif
-
-  movq    (%rbx), %rdi        /* load jmpbuf_t* and longjmp */
   jmp     mp_longjmp        
 
   .cfi_endproc
