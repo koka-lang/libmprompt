@@ -132,8 +132,8 @@ mp_stack_enter:
   andq    $~0x0F, %rdi        /* align down to 16 bytes */
   movq    %rdi, %rsp          /* and switch stack */
   pushq   %rcx                /* align */
-  pushq   %rcx                /* save jmpbuf_t** */
   pushq   %rax                /* old rip */
+  pushq   %rcx                /* save jmpbuf_t** */  
   jmp     mp_stack_entry
   
 mp_stack_entry:
@@ -141,13 +141,7 @@ mp_stack_entry:
   .cfi_signal_frame
   .cfi_remember_state
   
-  pushq   %rbp               /* previous rbp, should be updated via trap frame parameter */  
-  .cfi_adjust_cfa_offset 8   
-  .cfi_rel_offset rbp, 0    
-  /* movq    %rsp, %rbp  */
-  
-  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 16, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (16(%rsp)) */  
-  /* .cfi_escape DW_def_cfa_expression, 3, DW_OP_breg(DW_REG_r15), 0, DW_OP_deref */ /* cfa = 0(%r15) */  
+  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (16(%rsp)) */  
   .cfi_offset rip, 0
   .cfi_offset rbx, 8  
   .cfi_offset rsp, 16
