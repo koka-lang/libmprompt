@@ -145,7 +145,7 @@ mp_stack_entry:
   .cfi_remember_state
   
   /* Set the cfa to point to our return jmpbuf_t (instead of into the stack); 
-     the previous registers can now be restored (during unwind) using .cfi_restore directives 
+     The previous registers can now be restored (during unwind) using .cfi_offset directives 
      Todo: on macOS, this seems to trigger a bug in libunwind when running the program inside `lldb` on a `throw`
   */
   .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (0(%rsp)) */  
