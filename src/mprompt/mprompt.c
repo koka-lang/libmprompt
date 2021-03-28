@@ -268,7 +268,7 @@ static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, m
     mp_assert_internal(ret->kind == MP_EXCEPTION);
     mp_trace_message("rethrow propagated exception again (from prompt %p)..\n", p);
     mp_prompt_drop(p);
-    //mp_throw_prepare(); 
+    mp_throw_prepare(); 
     std::rethrow_exception(ret->exn);
     #else
     mp_unreachable("invalid return kind");
@@ -504,15 +504,15 @@ void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
 //  *((void**)((uint8_t*)tib + 5240)) = NULL;
 //}
 //#else
-//void mp_throw_prepare(void) {}
+void mp_throw_prepare(void) {}
 //#endif
 
 void mp_mprompt_init(size_t gstack_size, size_t gpool_max_size) {
   /*uint8_t* sp = mp_win_sp();
   mp_stack_enter(sp - 256, NULL, NULL, &mp_test_start, NULL);
   */
-  //ULONG guarantee = 16 * MP_KIB;
+  //ULONG guarantee = 32 * MP_KIB;
   //SetThreadStackGuarantee(&guarantee);
-  //mp_throw_prepare();
+  // mp_throw_prepare();
   mp_gstack_init((ssize_t)gstack_size, (ssize_t)gpool_max_size);
 }

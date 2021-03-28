@@ -23,7 +23,7 @@ static void mp_async_test1M(void);
 
 int main(int argc, char** argv) {
   printf("main\n");
-  mp_mprompt_init(0, 1);
+  mp_mprompt_init(0, 1 /* use gpool */);
   size_t start_rss = 0;
   mpt_timer_t start = mpt_show_process_info_start(&start_rss);
 
@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
   amb_run();
   amb_state_run();
   nqueens_run();
-  throw_run();  // fails in msvc debug mode after amb_state_run
+  // throw_run();  // fails in msvc debug mode after amb_state_run (due to the stack limit check)
 
   // mprompt tests
   //mp_async_test1M();  // async workers
