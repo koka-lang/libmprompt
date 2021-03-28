@@ -141,7 +141,9 @@ mp_stack_enter:
            the return jmpbuf_t* is: ((%rsp)) == DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref
   */           
   .cfi_remember_state
-  .cfi_escape DW_def_cfa_expression,     6, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref, DW_OP_plus_uconst, 16 /* rsp offset in jmpbuf */
+  .cfi_escape DW_def_cfa_expression,     6, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref, DW_OP_plus_uconst, 16    /* rsp offset in jmpbuf */ 
+  /* .cfi_escape DW_expression, DW_REG_rsp, 6, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref, DW_OP_plus_uconst, 16 */
+  .cfi_escape DW_expression, DW_REG_rbp, 6, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref, DW_OP_plus_uconst, 24
   .cfi_escape DW_expression, DW_REG_rip, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref /* rip is at offset 0 in the jmpbuf */
   .cfi_return_column rip
   
