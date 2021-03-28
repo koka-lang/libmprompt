@@ -124,6 +124,47 @@ mp_longjmp:                  /* rdi: jmp_buf */
 _mp_stack_enter:
 mp_stack_enter:
   .cfi_startproc  
+  .cfi_signal_frame
+  movq    (%rsp), %r11        /* rip */
+  
+  /* switch stack */
+  andq    $~0x0F, %rdi        /* align down to 16 bytes */
+  subq    $16, %rdi
+  movq    %rcx, (%rdi)
+  movq    %rdi, %rsp          /* and switch stack */  
+
+  /* unwind info: set cfa and rip from the current mp_jmpbuf_t return point 
+     todo: use .cfi_return_column?
+     note: the expression calculates the _address_ that contains the new value of the target register.
+           the return jmpbuf_t* is: ((%rsx)) == DW_OP_breg(DW_REG_rsx), 0, DW_OP_DEREF, DW_OP_deref
+  */           
+  .cfi_remember_state
+  .cfi_escape DW_def_cfa_expression,     6, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref, DW_OP_plus_uconst, 16
+  .cfi_escape DW_expression, DW_REG_rip, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref
+
+  movq    %r9, %rdi           /* pass the function argument */
+  xorq    %rsi, %rsi          /* no trap frame */
+  callq   *%r8                /* and call the function */
+  
+  /* we should never get here (but the called function should longjmp, see `mprompt.c:mp_mprompt_stack_entry`) */
+  #ifdef __MACH__
+  callq   _abort
+  #else
+  callq   abort
+  #endif
+
+  .cfi_restore_state
+  movq    (%rsp), %rdi        /* load jmpbuf_t* and longjmp */
+  movq    (%rdi), %rdi
+  jmp     mp_longjmp        
+
+  .cfi_endproc
+
+
+
+_mp_stack_enterx:
+mp_stack_enterx:
+  .cfi_startproc  
   movq    (%rsp), %r11        /* rip */
   
   /* switch stack */
@@ -136,7 +177,7 @@ mp_stack_enter:
            the return jmpbuf_t* is: (%rbx) == DW_OP_breg(DW_REG_rbx), 0, DW_OP_DEREF
   */
   .cfi_escape DW_expression, DW_REG_rbx, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 8
-  .cfi_escape DW_def_cfa_expression, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 16
+  .cfi_escape DW_def_cfa_expression,     5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 16
   .cfi_escape DW_expression, DW_REG_rbp, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 24 
   .cfi_escape DW_expression, DW_REG_rip, 3, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref
 
@@ -174,57 +215,3 @@ mp_stack_enter:
   .cfi_endproc
 
 
-
-_mp_stack_enterx:
-mp_stack_enterx:
-  .cfi_startproc
-  movq    (%rsp), %r11        /* rip */
-  
-  /* switch stack */
-  andq    $~0x0F, %rdi        /* align down to 16 bytes */
-  movq    %rdi, %rsp          /* and switch stack */  
-  pushq   %r11                
-
-  /* unwind info: set rbx, rbp, rsp, and rip from the current mp_jmpbuf_t return point 
-     todo: can we do this more efficiently using more regular cfi directives? Perhaps we just need to load the jmpbuf ptr?
-     todo: on macOS, this seems to trigger a bug when running in lldb on a throw
-     note: the expression calculates the _address_ that contains the new value of the target register.
-           the return jmpbuf_t* is: (%rbx) == DW_OP_breg(DW_REG_rbx), 0, DW_OP_DEREF
-  */
-  .cfi_escape DW_expression, DW_REG_rbx, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 8
-  .cfi_escape DW_expression, DW_REG_rbp, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 24 
-  .cfi_escape DW_expression, DW_REG_rsp, 5, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref, DW_OP_plus_uconst, 16
-  .cfi_escape DW_expression, DW_REG_rip, 3, DW_OP_breg(DW_REG_rbx), 0, DW_OP_deref
-
-  /* use rbp to be more compatible with unwinding */
-  pushq   %rbp
-  .cfi_adjust_cfa_offset 8 
-  movq    %rsp, %rbp
-  .cfi_def_cfa_register %rbp 
-
-  pushq   %rbx                /* save non-volatile rbx */
-  .cfi_adjust_cfa_offset 8
-  /* .cfi_rel_offset %rbx, 0 */  /* hide to ensure unwinding uses the current rbx */
-  movq    %rcx, %rbx          /* and put the jmpbuf_t** in rbx so it can be used for a backtrace */
-  .cfi_register %rcx, %rbx 
-  subq    $8, %rsp            /* align stack */
-  .cfi_adjust_cfa_offset 8
-  
-  movq    %r9, %rdi           /* pass the function argument */
-  xorq    %rsi, %rsi          /* no trap frame */
-  callq   *%r8                /* and call the function */
-  
-  /* we should never get here (but the called function should longjmp, see `mprompt.c:mp_mprompt_stack_entry`) */
-  #ifdef __MACH__
-  callq   _abort
-  #else
-  callq   abort
-  #endif
-
-  movq    (%rbx), %rdi        /* load jmpbuf_t* and longjmp */
-  jmp     mp_longjmp        
-
-  mov     %rbp, %rsp
-  pop     %rsp
-  ret
-  .cfi_endproc
