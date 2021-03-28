@@ -113,6 +113,10 @@ if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
   list(APPEND mp_cflags -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
 endif()
 
+if(APPLE)
+  list(APPEND mp_cflags -fno-omit-frame-pointer)
+endif()
+
 if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
   list(APPEND mp_cflags -EHa)   # seems only needed for libmprompt
 endif()

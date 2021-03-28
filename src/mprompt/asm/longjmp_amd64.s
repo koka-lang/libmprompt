@@ -186,15 +186,16 @@ mp_stack_enterx:
 
   /* use rbp to be more compatible with unwinding */
   pushq   %rbp
-  .cfi_adjust_cfa_offset 8 
+  .cfi_def_cfa_offset 16
+  .cfi_offset rbp, -16
   movq    %rsp, %rbp
-  .cfi_def_cfa_register %rbp 
+  .cfi_def_cfa_register rbp 
 
   pushq   %rbx                /* save non-volatile rbx */
   .cfi_adjust_cfa_offset 8
   /* .cfi_rel_offset %rbx, 0 */  /* hide to ensure unwinding uses the current rbx */
   movq    %rcx, %rbx          /* and put the jmpbuf_t** in rbx so it can be used for a backtrace */
-  .cfi_register %rcx, %rbx 
+  .cfi_register rcx, rbx 
   subq    $8, %rsp            /* align stack */
   .cfi_adjust_cfa_offset 8
   
