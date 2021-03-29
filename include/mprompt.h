@@ -27,7 +27,7 @@
 
 
 //---------------------------------------------------------------------------
-// multi-prompt interface
+// Multi-prompt interface
 //---------------------------------------------------------------------------
 
 // Types
@@ -51,11 +51,11 @@ mp_decl_export void* mp_resume_tail(mp_resume_t* resume, void* arg);    // resum
 mp_decl_export void  mp_resume_drop(mp_resume_t* resume);               // drop the resume object without resuming
 
 
+
 //---------------------------------------------------------------------------
-// Other
+// Multi-shot resumptions; use with care in combination with linear resources.
 //---------------------------------------------------------------------------
 
-// Multi-shot resumptions; use with care in combination with linear resources.
 typedef void* (mp_myield_fun_t)(mp_mresume_t*, void* arg);
 
 mp_decl_export void* mp_myield(mp_prompt_t* p, mp_myield_fun_t* fun, void* arg);
@@ -65,15 +65,25 @@ mp_decl_export void  mp_mresume_drop(mp_mresume_t* r);
 mp_decl_export mp_mresume_t* mp_mresume_dup(mp_mresume_t* r);
 
 
+
+//---------------------------------------------------------------------------
+// Initialization
+//---------------------------------------------------------------------------
+
 // Initialize explicitly:
-//  gstack_size   : pass 0 to use default (8MiB virtual)
-//  max_gpool_size: pass 0 to not use gpools if possible (only on Windows and Linux with overcommit enabled)
-//                  use 1 to enable gpools with the default maximum size (256GiB virtual)
+//  gstack_max_size : pass 0 to use default (8MiB virtual)
+//  gpool_max_size  : pass 0 to not use gpools if possible (only on Windows and Linux with overcommit enabled)
+//                    use 1 to enable gpools with the default maximum size (256GiB virtual)
 #include <stddef.h>
-mp_decl_export void mp_mprompt_init(size_t gstack_size, size_t gpool_max_size);
+mp_decl_export void mp_mprompt_init(size_t gstack_max_size, size_t gpool_max_size);
 
 
-// Low-level access
+
+//---------------------------------------------------------------------------
+// Low-level access  
+// (only `mp_mresume_should_unwind` is required by `libmphandler`)
+//---------------------------------------------------------------------------
+
 mp_decl_export long         mp_mresume_resume_count(mp_mresume_t* r);
 mp_decl_export int          mp_mresume_should_unwind(mp_mresume_t* r);  // refcount==1 && resume_count==0
 
@@ -82,6 +92,10 @@ mp_decl_export void*        mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun,
 mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
 
 
+
+//---------------------------------------------------------------------------
+// Misc
+//---------------------------------------------------------------------------
 
 // to be fixed... 
 #ifdef _WIN32
