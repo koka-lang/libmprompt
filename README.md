@@ -105,8 +105,11 @@ Some known issues are:
 - `gdb`, `lldb`: when using _gpools_ you will see segmentation fault errors (`SEGV`)
   which happen when demand paging stack memory; you need to continue through those
   or set the debugger to ignore them (enter `handle SIGSEGV nostop` in `gdb`).
-
-- `lldb` on macOSX: seg faults in `libunwind` when a C++ `throw` happens.
+  
+- `lldb` on macOS is unable to continue after a demand-page `SEGV`
+  due to a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868).
+  A workaround is to set the gstack initial commit high enough to avoid 
+  demand paging during debugging.
 
 - On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably
   (and currently on Windows _gpools_ always need to be used). Backtraces only span
