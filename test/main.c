@@ -23,7 +23,12 @@ static void mp_async_test1M(void);
 
 int main(int argc, char** argv) {
   printf("main\n");
-  mp_mprompt_init(0, 0 /* use gpool? */);
+  
+  mp_config_t config = { };
+  //config.gpool_enable = true;
+  //config.stack_max_size = 1 * 1024 * 1024L;
+  mp_init(&config);
+
   size_t start_rss = 0;
   mpt_timer_t start = mpt_show_process_info_start(&start_rss);
 

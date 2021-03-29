@@ -32,6 +32,7 @@ struct mp_gstack_s {
 };
 
 
+
 //----------------------------------------------------------------------------------
 // Configuration
 //----------------------------------------------------------------------------------
@@ -164,7 +165,7 @@ static ssize_t mp_gstack_initial_reserved(void) {
 // Allocate a growable stacklet.
 mp_gstack_t* mp_gstack_alloc(void)
 {
-  mp_gstack_init(0,-1);  // always check initialization
+  mp_gstack_init(NULL);  // always check initialization
   mp_assert(os_page_size != 0);
   mp_gstack_t* g = NULL;
 
@@ -328,6 +329,7 @@ void mp_gsave_free(mp_gsave_t* gs) {
 //----------------------------------------------------------------------------------
 
 
+
 // Done (called automatically)
 static void mp_gstack_done(void) {  
   mp_gstack_thread_done();
@@ -337,19 +339,35 @@ static void mp_gstack_thread_init(void);  // called from `mp_gstack_init`
 
 
 // Init (called by mp_prompt_init and gstack_alloc)
-bool mp_gstack_init(ssize_t gstack_max_size, ssize_t gpool_max_size) {
-  if (os_page_size == 0) {
+bool mp_gstack_init(mp_config_t* config) {
+  if (os_page_size == 0) 
+  {
     // user settings
-    if (gstack_max_size > 1) {
-      os_gstack_size = mp_align_up(gstack_max_size, 4 * MP_KIB);
+    if (config != NULL) {
+      if (config->stack_max_size > 0) {
+        os_gstack_size = mp_align_up(config->stack_max_size, 4 * MP_KIB);
+      }
+      os_use_gpools = config->gpool_enable;
+      if (config->gpool_max_size > 0) {
+        os_gpool_max_size = mp_align_up(config->gpool_max_size, 64 * MP_KIB);
+      }
+      if (config->stack_exn_guaranteed > 0) {
+        os_gstack_exn_guaranteed = mp_align_up(config->stack_exn_guaranteed, 4 * MP_KIB);
+      }
+      if (config->stack_initial_commit > 0) {
+        os_gstack_initial_commit = mp_align_up(config->stack_initial_commit, 4 * MP_KIB);
+      }
+      if (config->stack_gap_size > 0) {
+        os_gstack_gap = mp_align_up(config->stack_gap_size, 4 * MP_KIB);
+      }
+      if (config->stack_cache_count > 0) {
+        os_gstack_cache_count = config->stack_cache_count;
+      }
+      else if (config->stack_cache_count < 0) {
+        os_gstack_cache_count = 0;
+      }
     }
-    if (gpool_max_size == 0) {
-      os_use_gpools = false;
-    }
-    else if (gpool_max_size >= 1) {
-      os_use_gpools = true;
-      if (gpool_max_size > 1) { os_gpool_max_size = mp_align_up(gpool_max_size, 4 * MP_KIB); }
-    }
+
     // os specific initialization
     if (!mp_gstack_os_init()) return false;
     if (os_page_size == 0) os_page_size = 4 * MP_KIB;
@@ -357,14 +375,28 @@ bool mp_gstack_init(ssize_t gstack_max_size, ssize_t gpool_max_size) {
     // ensure stack sizes are page aligned
     os_gstack_size = mp_align_up(os_gstack_size, os_page_size);
     os_gstack_exn_guaranteed = mp_align_up(os_gstack_exn_guaranteed, os_page_size);
+    os_gstack_gap = mp_align_up(os_gstack_gap, os_page_size);
+    os_gpool_max_size = mp_align_up(os_gpool_max_size, os_page_size);
     os_gstack_initial_commit = (os_gstack_initial_commit == 0 ? os_page_size : mp_align_up(os_gstack_initial_commit, os_page_size));
     if (os_gstack_initial_commit > os_gstack_size) os_gstack_initial_commit = os_gstack_size;
-    os_gpool_max_size = mp_align_up(os_gpool_max_size, os_page_size);
 
     // register exit routine
     atexit(&mp_gstack_done);
   }
+  
+  // Thread specific initialization
   mp_gstack_thread_init();
+
+  // Return actual settings
+  if (config != NULL) {
+    config->gpool_enable = os_use_gpools;
+    config->gpool_max_size = os_gpool_max_size;
+    config->stack_max_size = os_gstack_size;
+    config->stack_gap_size = os_gstack_gap;
+    config->stack_exn_guaranteed = os_gstack_exn_guaranteed;
+    config->stack_initial_commit = os_gstack_initial_commit;
+    config->stack_cache_count = os_gstack_cache_count;
+  }
   return true;
 }
 

@@ -523,9 +523,9 @@ void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
 //void mp_throw_prepare(void) {}
 //#endif
 
-void mp_mprompt_init(size_t gstack_size, size_t gpool_max_size) {
+void mp_init(mp_config_t* config) {
   //ULONG guarantee = 32 * MP_KIB;
   //SetThreadStackGuarantee(&guarantee);
   // mp_throw_prepare();
-  mp_gstack_init((ssize_t)gstack_size, (ssize_t)gpool_max_size);
+  mp_gstack_init(config);
 }

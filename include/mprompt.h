@@ -69,13 +69,25 @@ mp_decl_export mp_mresume_t* mp_mresume_dup(mp_mresume_t* r);
 //---------------------------------------------------------------------------
 // Initialization
 //---------------------------------------------------------------------------
-
-// Initialize explicitly:
-//  gstack_max_size : pass 0 to use default (8MiB virtual)
-//  gpool_max_size  : pass 0 to not use gpools if possible (only on Windows and Linux with overcommit enabled)
-//                    use 1 to enable gpools with the default maximum size (256GiB virtual)
 #include <stddef.h>
-mp_decl_export void mp_mprompt_init(size_t gstack_max_size, size_t gpool_max_size);
+
+// Configuration settings; any zero value uses the default setting.
+typedef struct mp_config_s {
+  bool      gpool_enable;         // enable gpool by default (on systems without overcommit gpools may still be enabled even if this is false)
+  ptrdiff_t gpool_max_size;       // maximum virtual size per gpool (256 GiB)
+  ptrdiff_t stack_max_size;       // maximum virtual size of a gstack (8 MiB)
+  ptrdiff_t stack_exn_guaranteed; // guaranteed extra stack space available during exception unwinding (Windows only) (16 KiB)
+  ptrdiff_t stack_initial_commit; // initial commit size of a gstack (OS page size, 4 KiB)
+  ptrdiff_t stack_gap_size;       // virtual no-access gap between stacks for security (64 KiB)
+  ptrdiff_t stack_cache_count;    // count of gstacks to keep in a thread-local cache (4)
+} mp_config_t;
+
+// Initialize with `config`; use NULL for default settings.
+// Call at most once from the main thread before using any other functions. 
+// Overwrites the `config` with the actual used settings.
+//
+// Use as: `mp_config_t config = { }; config.<setting> = <N>; mp_init(&config);`.
+mp_decl_export void mp_init(mp_config_t* config);
 
 
 

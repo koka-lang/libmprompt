@@ -266,14 +266,14 @@ static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* a
   const mp_gpool_t* gp;
   int res = mp_gpools_is_accessible(p,&available,&gp); 
   if (res == 1) {
-    // our pointer, make the page read-write
-    //mp_trace_message("  segv: unprotect page\n");
-    // use exponential growth; quite important for performance
+    // a pointer to a valid gstack in our gpool, make the page read-write
+    // mp_trace_message("  segv: unprotect page\n");
+    // use quadratic growth; quite important for performance
     ssize_t extra = 0;
     ssize_t used = os_gstack_size - available;
-    if (used > 0) { extra = 2*used; }          // doubling..
-    if (extra > 1*MP_MIB)  extra = 1*MP_MIB;   // up to 1MiB growh
-    if (extra > available) extra = available;
+    if (used > 0) { extra = 2*used; }                // doubling..
+    if (extra > 1 * MP_MIB) { extra = 1 * MP_MIB; }  // up to 1MiB growh
+    if (extra > available) { extra = available; }    // but not more than available
     extra = mp_align_down(extra,os_page_size);
     //mp_trace_message("expand stack: extra: %zd, avail: %zd, used: %d\n", extra, available, used);
     p = p - extra;
@@ -281,7 +281,7 @@ static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* a
     return; // we are ok!
   }
   else if (res == 2) {  
-    // demand page the mp_gpool_t.free array
+    // demand page the mp_gpool_t.free array with zeros
     if (mprotect(p, os_page_size, PROT_READ | PROT_WRITE) == 0) {
       if (gp!=NULL && !gp->zeroed) {
         memset(p, 0, os_page_size);  // zero out as well (can be needed with MAP_UNINITIALIZED)

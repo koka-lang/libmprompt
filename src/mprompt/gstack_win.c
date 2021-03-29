@@ -202,6 +202,7 @@ static bool mp_gstack_os_init(void) {
 }
 
 
+
 // -----------------------------------------------------
 // Page fault handler
 // Only used if gpool's are used 
@@ -226,10 +227,12 @@ typedef struct MP_TIB_S {
 } MP_TIB;
 
 
+// Current TIB
 static MP_TIB* mp_win_tib(void) {
   return (MP_TIB*)NtCurrentTeb();
 }
 
+// Get the current stack pointer
 static mp_decl_noinline uint8_t* mp_win_addr(volatile uint8_t* p) {
   return (uint8_t*)p;
 }
@@ -239,6 +242,7 @@ static mp_decl_noinline uint8_t* mp_win_current_sp(void) {
   return mp_win_addr(&b);
 }
 
+// Get the limits of the current stack of this thread
 static uint8_t* mp_win_tib_get_stack_extent(const MP_TIB* tib, ssize_t* commit_available, ssize_t* available, uint8_t** base) {
   uint8_t* sp = mp_win_current_sp();
   mp_assert_internal(os_stack_grows_down);
@@ -254,13 +258,16 @@ static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* avai
   return mp_win_tib_get_stack_extent(tib, commit_available, available, base);
 }
 
+
+// C++ exceptions are identified by this exception code on MSVC
 #define MP_CPP_EXN 0xE06D7363  // "msc"
 
-// Guard page fault handler: not required as Windows already grows stacks with a guard
-// page automatically; we use it to grow the stack exponentially for performance when using
+
+// Guard page fault handler: usually not used as Windows already grows stacks with a guard
+// page automatically; we use it to grow the stack quadratically for performance when using
 // gpool's (`os_use_gpools`).
 //
-// To avoid errors during RtlUnwindEx we also commit extra stack space if a C++ exception is 
+// To avoid errors during RtlUnwindEx we also use this handler to commit extra stack space if a C++ exception is 
 // thrown and little stack space is available. This is needed upfront as once an exception is 
 // being unwound, our fault handler cannot be invoked again during that time.
 // Todo: should we also do this for other (system) exceptions?
@@ -287,9 +294,9 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
     ssize_t commit_available;
     uint8_t* base;
     uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, &available, &base);
-    if (sp != NULL && base != mp_win_main_stack_base &&   // check we only grow the current stack
+    if (sp != NULL && base != mp_win_main_stack_base &&   // check we only grow the current stack (and not outside it!)
         commit_available < os_gstack_exn_guaranteed &&    // don't grow if not needed
-        available >= os_gstack_exn_guaranteed) {           
+        available >= os_gstack_exn_guaranteed) {         
       res = 1;
     }
   }
@@ -308,7 +315,7 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
       extra = (exncode != MP_CPP_EXN ? 2 * used : os_gstack_exn_guaranteed);  // doubling.. (or just guaranteed size for exceptions)
     }
     if (extra > 1 * MP_MIB) {
-      extra = 1 * MP_MIB;   // up to 1MiB growh
+      extra = 1 * MP_MIB;                 // up to 1MiB growh
     }
     if (extra > available - guard_size) {
       extra = available - guard_size;     // up to stack limit
