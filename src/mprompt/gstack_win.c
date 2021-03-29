@@ -148,6 +148,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
   }
 }
 
+
 // -----------------------------------------------------
 // Initialization
 // -----------------------------------------------------
@@ -173,6 +174,9 @@ static void mp_gstack_os_thread_init(void) {
 static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep);
 
 static bool mp_gstack_os_init(void) {
+  // for now we always enable gpools or otherwise exceptions don't work
+  os_use_gpools = true;
+
   // page size
   SYSTEM_INFO sys_info;
   GetSystemInfo(&sys_info);
@@ -203,23 +207,62 @@ static bool mp_gstack_os_init(void) {
 #include <memoryapi.h>
 #include <winternl.h>
 
+// Extended TIB stucture from _NT_TIB
+typedef struct MP_TIB_S {
+  struct _EXCEPTION_REGISTRATION_RECORD* ExceptionList;
+  uint8_t* StackBase;                // bottom of the stack (highest address)
+  uint8_t* StackLimit;               // commit limit (points to the top of the guard page)
+  PVOID    SubSystemTib;
+  PVOID    FiberData;
+  PVOID    ArbitraryUserPointer;
+  struct _NT_TIB* Self;
+  PVOID    padding1[(0x1478 - 7*sizeof(PVOID))/sizeof(PVOID)];
+  uint8_t* StackRealLimit;           // "Deallocation limit", the actual reserved size
+  PVOID    padding2[(0x1748 - sizeof(PVOID) - 0x1478 - 7*sizeof(PVOID))/sizeof(PVOID)];
+  size_t   StackGuaranteed;          // Guaranteed available stack during an exception
+} MP_TIB;
+
+
+static MP_TIB* mp_win_tib(void) {
+  return (MP_TIB*)NtCurrentTeb();
+}
+
+static mp_decl_noinline uint8_t* mp_win_addr(volatile uint8_t* p) {
+  return (uint8_t*)p;
+}
+
+static mp_decl_noinline uint8_t* mp_win_current_sp(void) {
+  volatile uint8_t b;
+  return mp_win_addr(&b);
+}
+
+#define MP_CPP_EXN 0xE06D7363  // "msc"
+
 // Guard page fault handler: not required as Windows already grows stacks with a guard
 // page automatically; we use it to grow the stack exponentially for performance when using
 // gpool's (`os_use_gpools`).
+//
+// To avoid errors during RtlUnwindEx we also commit an extra stack page if a C++ exception is 
+// thrown and little stack space is available.
+// Todo: should we also do this for other (system) exceptions?
 static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   const DWORD exncode = ep->ExceptionRecord->ExceptionCode;
   if (!os_use_gpools ||
-      (exncode != STATUS_STACK_OVERFLOW && exncode != STATUS_ACCESS_VIOLATION)) {  // STATUS_GUARD_PAGE_VIOLATION
+      (exncode != STATUS_STACK_OVERFLOW && exncode != STATUS_ACCESS_VIOLATION && exncode != MP_CPP_EXN)) {  // STATUS_GUARD_PAGE_VIOLATION
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
   // find the page start
-  uint8_t* const addr = (uint8_t*)ep->ExceptionRecord->ExceptionInformation[1];
+  MP_TIB* tib = mp_win_tib();
+  uint8_t* const addr = (exncode!=MP_CPP_EXN ? (uint8_t*)ep->ExceptionRecord->ExceptionInformation[1] : tib->StackLimit - 8); 
   uint8_t* const page = mp_align_down_ptr(addr, os_page_size); 
+  ssize_t commit_available = mp_win_current_sp() - tib->StackLimit;
   ssize_t available;
   int res = mp_gpools_is_accessible(page, &available, NULL);
 
-  if (res == 1 && exncode == STATUS_STACK_OVERFLOW) {
+  if ((res == 1 && exncode == STATUS_STACK_OVERFLOW) || 
+      (res == 1 && exncode == MP_CPP_EXN && commit_available < os_page_size)) 
+  {
     // pointer in our gpool stack, make the page read-write
     // mp_trace_message("  segv: unprotect page\n");
     // use exponential growth; important for performance, see `main.cpp:test1M`.
@@ -229,21 +272,26 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
 
     ssize_t extra = 0;
     ssize_t used = os_gstack_size - os_gstack_gap - available;
-    if (used > 0) { extra = 2 * used; }            // doubling..
-    if (extra > 1 * MP_MIB)  extra = 1 * MP_MIB;   // up to 1MiB growh
-    if (extra > available - guard_size) extra = available - guard_size;
+    if (used > 0) {
+      extra = (exncode != MP_CPP_EXN ? 2 * used : os_page_size);  // doubling.. (or just one extra page for exceptions)
+    }
+    if (extra > 1 * MP_MIB) {
+      extra = 1 * MP_MIB;   // up to 1MiB growh
+    }
+    if (extra > available - guard_size) {
+      extra = available - guard_size;     // up to stack limit
+    }
     extra = mp_align_down(extra, os_page_size);
     if (extra >= 0) {
       uint8_t* const extend = (uint8_t*)page - extra;
       if (VirtualAlloc(extend, extra + os_page_size, MEM_COMMIT, PAGE_READWRITE) != NULL) {
         uint8_t* const gpage = extend - guard_size;
         if (VirtualAlloc(gpage, guard_size, MEM_COMMIT, PAGE_GUARD | PAGE_READWRITE) != NULL) {
-          NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
           tib->StackLimit = extend;
-          *((uint8_t**)((uintptr_t)tib + 0x1478)) = gpage;  // real stack limit     
+          tib->StackRealLimit = gpage; 
           //mp_trace_message("expanded stack: extra: %zdk, available: %zdk, used: %zdk\n", extra/1024, available/1024, used/1024);
           //mp_trace_stack_layout(NULL, NULL);
-          return EXCEPTION_CONTINUE_EXECUTION;
+          return (exncode!=MP_CPP_EXN ? EXCEPTION_CONTINUE_EXECUTION : EXCEPTION_CONTINUE_SEARCH);
         }
       }
     }
@@ -276,29 +324,21 @@ static DWORD mp_win_get_error(void) {
   return err;
 }
 
-static mp_decl_noinline uint8_t* mp_win_addr(volatile uint8_t* p) {
-  return (uint8_t*)p;
-}
-
-static mp_decl_noinline uint8_t* mp_win_sp(void) {
-  volatile uint8_t b;
-  return mp_win_addr(&b);
-}
 
 static void mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit) {
   uint8_t* base_glimit = NULL;
   ssize_t  guaranteed = 0;
   if (base == NULL) {
-    NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
-    base = (uint8_t*)tib->StackBase;
-    xbase_limit = *((uint8_t**)((uint8_t*)tib + 5240));
-    base_glimit = (uint8_t*)tib->StackLimit;
-    guaranteed = *((ULONG*)((uint8_t*)tib + 0x1748));
+    MP_TIB* tib = mp_win_tib();
+    base = tib->StackBase;
+    xbase_limit = tib->StackRealLimit;
+    base_glimit = tib->StackLimit;
+    guaranteed = tib->StackGuaranteed;
   }
   else {
     base = (uint8_t*)mp_align_up((intptr_t)base, os_page_size);
   }
-  mp_trace_message("-- stack, rsp: %p ---------------------------------\n", mp_win_sp());
+  mp_trace_message("-- stack, rsp: %p ---------------------------------\n", mp_win_current_sp());
   uint8_t* base_limit = (uint8_t*)mp_align_up((intptr_t)xbase_limit, os_page_size);
   uint8_t* full = base_limit - os_gstack_gap;
   uint8_t* end = base + os_gstack_gap;

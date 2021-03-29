@@ -14,15 +14,7 @@
 MPE_DEFINE_EFFECT1(multi, unwind)
 MPE_DEFINE_OP0(multi, unwind, long)
 
-class test_raii_t {
-private:
-  const char* msg;
-public:
-  test_raii_t(const char* s) : msg(s) { }
-  ~test_raii_t() {
-    fprintf(stderr, "destruct: %s\n", msg);
-  }
-};
+
 
 /*-----------------------------------------------------------------
   Benchmark
@@ -30,7 +22,7 @@ public:
 
 
 static void* bench_main(void* arg) {
-  test_raii_t("d1");
+  test_raii_t d3("d3");
   UNUSED(arg);
   long i = multi_unwind() + multi_unwind();
   return mpe_voidp_long(i);

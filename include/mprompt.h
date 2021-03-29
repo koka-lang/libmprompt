@@ -98,14 +98,10 @@ mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
 //---------------------------------------------------------------------------
 
 // to be fixed... 
-void mp_throw_prepare(void);
+#define mp_throw    throw
 #ifdef _WIN32
-#define mp_throw    mp_throw_prepare(), throw
-
 #include <stdint.h>
 mp_decl_export void mp_win_trace_stack_layout(uint8_t* base, uint8_t* base_limit);
-#else
-#define mp_throw    throw
 #endif
 
 

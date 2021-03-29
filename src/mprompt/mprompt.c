@@ -18,6 +18,7 @@
 #ifdef __cplusplus
 #include <exception>
 #include <utility>
+#include <stdexcept>
 #endif
 
 
@@ -45,6 +46,7 @@ typedef struct mp_return_point_s {   // allocated on the parent stack (which per
   void*            arg;     // if yielding, the argument to the function; if returning, the result.
   #ifdef __cplusplus
   std::exception_ptr exn;   // returning with an exception to propagate
+  //std::exception* exn;
   #endif
 } mp_return_point_t;
 
@@ -270,7 +272,7 @@ static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, m
     mp_assert_internal(ret->kind == MP_EXCEPTION);
     mp_trace_message("rethrow propagated exception again (from prompt %p)..\n", p);
     mp_prompt_drop(p);
-    mp_throw_prepare(); 
+    //mp_throw_prepare(); 
     std::rethrow_exception(ret->exn);
     #else
     mp_unreachable("invalid return kind");
@@ -510,19 +512,18 @@ void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
 //#ifdef _WIN32
 //#include <windows.h>
 //void mp_throw_prepare(void) {
-//  NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
-//  tib->StackBase = ((uint64_t*)NULL - 1);
-//  tib->StackLimit = NULL;
-//  *((void**)((uint8_t*)tib + 5240)) = NULL;
+//  //ULONG guarantee = 32 * MP_KIB;
+//  //SetThreadStackGuarantee(&guarantee);
+//  //NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
+//  //tib->StackLimit = *((void**)((uint8_t*)tib + 5240));//  
+//  //tib->StackBase = ((uint64_t*)NULL - 1);
+//  //*((void**)((uint8_t*)tib + 5240)) = NULL;    
 //}
 //#else
-void mp_throw_prepare(void) {}
+//void mp_throw_prepare(void) {}
 //#endif
 
 void mp_mprompt_init(size_t gstack_size, size_t gpool_max_size) {
-  /*uint8_t* sp = mp_win_sp();
-  mp_stack_enter(sp - 256, NULL, NULL, &mp_test_start, NULL);
-  */
   //ULONG guarantee = 32 * MP_KIB;
   //SetThreadStackGuarantee(&guarantee);
   // mp_throw_prepare();

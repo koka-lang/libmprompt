@@ -12,15 +12,6 @@
 #endif
 
 
-class test_raii_t {
-private:
-  const char* msg;
-public:
-  test_raii_t(const char* s) : msg(s) { }
-  ~test_raii_t() {
-    fprintf(stderr, "destruct: %s\n", msg);
-  }
-};
 
 /*-----------------------------------------------------------------
   Benchmark
@@ -28,7 +19,7 @@ public:
 
 
 static void* bench_exn(void* arg) {
-  test_raii_t("d1");
+  test_raii_t d1("d1");
   UNUSED(arg);
   long i = state_get() + state_get();
   if (i > 42) {
@@ -42,7 +33,7 @@ static void* bench_exn(void* arg) {
   Run
 -----------------------------------------------------------------*/
 static void* bench_state(void* arg) {
-  test_raii_t("d2");
+  test_raii_t d2("d2");
   return state_handle(&bench_exn, 42, arg);
 }
 

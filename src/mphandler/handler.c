@@ -171,8 +171,14 @@ public:
   const mpe_operation_t* op;
   void* arg;
   mpe_unwind_exception(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) : target(h), op(op), arg(arg) {  }
-  mpe_unwind_exception(const mpe_unwind_exception& e) : target(e.target), op(e.op), arg(e.arg) {  }
-  mpe_unwind_exception& operator=(const mpe_unwind_exception& e) { target = e.target; op = e.op; arg = e.arg; return *this; }
+  mpe_unwind_exception(const mpe_unwind_exception& e) : target(e.target), op(e.op), arg(e.arg) {  
+    fprintf(stderr, "copy exception\n");
+  }
+  mpe_unwind_exception& operator=(const mpe_unwind_exception& e) { 
+    target = e.target; op = e.op; arg = e.arg; 
+    return *this; 
+  }
+
   virtual const char* what() const throw() {
     return "libmpeff: unwinding the stack; do not catch this exception!";
   }

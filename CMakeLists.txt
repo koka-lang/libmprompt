@@ -121,7 +121,7 @@ if(APPLE)
 endif()
 
 if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
-  list(APPEND mp_cflags -EHa)   # seems only needed for libmprompt
+  list(APPEND mp_cflags -EHa)   # needed for reliable calling of destructors
 endif()
 
 if (CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel|ARMClang|ARMCC")

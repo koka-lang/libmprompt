@@ -47,6 +47,20 @@ static inline void exn_run(void) { }
 static inline void multi_unwind_run(void) { };
 #endif
 
+#ifdef __cplusplus
+class test_raii_t {
+private:
+  const char* msg;
+public:
+  test_raii_t(const char* s) : msg(s) {
+    fprintf(stderr, "construct: %s\n", msg);
+  }
+  ~test_raii_t() {
+    fprintf(stderr, "destruct: %s\n", msg);
+  }
+};
+#endif
+
 
 /*-----------------------------------------------------------------
   Standard effects
