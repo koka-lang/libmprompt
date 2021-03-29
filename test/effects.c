@@ -47,6 +47,27 @@ void* greader_handle(mpe_actionfun_t action, long init, void* arg) {
 
 
 /*-----------------------------------------------------------------
+  Exception
+-----------------------------------------------------------------*/
+MPE_DEFINE_EFFECT1(exn, raise)
+MPE_DEFINE_VOIDOP1(exn, raise, mpe_string_t)
+
+static void* handle_exn_raise(mpe_resume_t* r, void* local, void* arg) {
+  UNUSED(local); UNUSED(r);
+  fprintf(stderr, "exn raised: %s\n", (const char*)arg);
+  return NULL;
+}
+
+void* exn_handle(mpe_actionfun_t action, void* arg) {
+  static const mpe_handlerdef_t exn_hdef = { MPE_EFFECT(exn), NULL, NULL, NULL, {
+    { MPE_OP_NEVER, MPE_OPTAG(exn,raise), &handle_exn_raise },
+    { MPE_OP_NULL, mpe_op_null, NULL }
+  } };
+  return mpe_handle(&exn_hdef, NULL, action, arg);
+}
+
+
+/*-----------------------------------------------------------------
   State
 -----------------------------------------------------------------*/
 MPE_DEFINE_EFFECT2(state, get, set)

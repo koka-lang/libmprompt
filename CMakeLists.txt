@@ -52,7 +52,10 @@ else()
   set(mp_mprompt_name   "mpromptx")
   set(mp_mphandler_name "mphandlerx")
     
-  list(APPEND test_sources test/test-throw.cpp)
+  list(APPEND test_sources 
+              test/test-exn.cpp
+              test/test-multi-unwind.cpp
+              test/test-throw.cpp)
 
   SET_SOURCE_FILES_PROPERTIES(${mprompt_sources} PROPERTIES LANGUAGE CXX )
   SET_SOURCE_FILES_PROPERTIES(${mphandler_sources} PROPERTIES LANGUAGE CXX )

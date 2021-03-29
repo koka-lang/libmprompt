@@ -98,8 +98,8 @@ mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
 //---------------------------------------------------------------------------
 
 // to be fixed... 
-#ifdef _WIN32
 void mp_throw_prepare(void);
+#ifdef _WIN32
 #define mp_throw    mp_throw_prepare(), throw
 
 #include <stdint.h>

@@ -31,9 +31,8 @@ static void*          mp_error_arg;
 #endif
 
 // low-level output
-static void mp_fputs(const char* prefix, const char* message) {
+static void mp_fputs(mp_output_fun* out, const char* prefix, const char* message) {
   int fd = -1;
-  mp_output_fun* out = mp_output_handler;
   if (out == NULL || (intptr_t)out == 2 || (FILE*)out == stderr) fd = 2;
   else if ((intptr_t)out == 1 || (FILE*)out == stdout) fd = 1;
   if (fd >= 0) { 
@@ -48,21 +47,21 @@ static void mp_fputs(const char* prefix, const char* message) {
 }
 
 // Formatted messages
-static void mp_vfprintf( const char* prefix, const char* fmt, va_list args ) {
+static void mp_vfprintf( mp_output_fun* out, const char* prefix, const char* fmt, va_list args ) {
   char buf[256];
   if (fmt==NULL) return;
   vsnprintf(buf,sizeof(buf)-1,fmt,args);
-  mp_fputs(prefix,buf);
+  mp_fputs(out, prefix,buf);
 }
 
 #ifndef NDEBUG
 static void mp_show_trace_message(const char* fmt, va_list args) {
-  mp_vfprintf( "libmprompt: trace: ", fmt, args);
+  mp_vfprintf( mp_output_handler, "libmprompt: trace: ", fmt, args);
 }
 #endif 
 
 static void mp_show_error_message(const char* fmt, va_list args) {
-  mp_vfprintf( "libmprompt: error: ", fmt, args);
+  mp_vfprintf( mp_output_handler, "libmprompt: error: ", fmt, args);
 }
 
 void mp_trace_message(const char* fmt, ...) {

@@ -38,10 +38,15 @@ void amb_state_run(void);
 
 #ifdef __cplusplus
 void throw_run(void);
+void exn_run(void);
+void multi_unwind_run(void);
 #else
 // dummies in C
 static inline void throw_run(void) { }
+static inline void exn_run(void) { }
+static inline void multi_unwind_run(void) { };
 #endif
+
 
 /*-----------------------------------------------------------------
   Standard effects
@@ -51,18 +56,23 @@ static inline void throw_run(void) { }
 MPE_DECLARE_EFFECT1(reader, ask)
 MPE_DECLARE_OP0(reader, ask, long)
 
-void* reader_handle(mpe_actionfun_t action, long init, void* arg);   // tail_noop
-void* greader_handle(mpe_actionfun_t action, long init, void* arg);  // general 
+void* reader_handle(mpe_actionfun_t* action, long init, void* arg);   // tail_noop
+void* greader_handle(mpe_actionfun_t* action, long init, void* arg);  // general 
+
+MPE_DECLARE_EFFECT1(exn, raise)
+MPE_DECLARE_VOIDOP1(exn, raise, mpe_string_t)
+
+void* exn_handle(mpe_actionfun_t* action, void* arg);
 
 // State
 MPE_DECLARE_EFFECT2(state, get, set)
 MPE_DECLARE_OP0(state, get, long)
 MPE_DECLARE_VOIDOP1(state, set, long)
 
-void* state_handle(mpe_actionfun_t action, long init, void* arg);    // tail_noop
-void* ustate_handle(mpe_actionfun_t action, long init, void* arg);   // tail
-void* gstate_handle(mpe_actionfun_t action, long init, void* arg);   // general
-void* ostate_handle(mpe_actionfun_t action, long init, void* arg);   // scoped_once
+void* state_handle(mpe_actionfun_t* action, long init, void* arg);    // tail_noop
+void* ustate_handle(mpe_actionfun_t* action, long init, void* arg);   // tail
+void* gstate_handle(mpe_actionfun_t* action, long init, void* arg);   // general
+void* ostate_handle(mpe_actionfun_t* action, long init, void* arg);   // scoped_once
 
 // Ambiguity
 MPE_DECLARE_EFFECT1(amb, flip)
