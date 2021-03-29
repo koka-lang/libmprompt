@@ -396,8 +396,7 @@ Here a breakpoint was set in code that was resumed
 where the backtrace continues into the main stack. This is quite nice
 for debugging compared to callback based programming for example.
 
-(Unfortunately, backtraces are not yet working on Windows,
-and on macOS debugging in `lldb` has trouble unwinding on a `throw`).
+(Unfortunately, full backtraces are not yet working on Windows with MSVC).
 
 
 ## The libmphandler Interface
