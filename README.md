@@ -67,7 +67,6 @@ Enjoy,
 Todos:
 - Proper backtrace support in debuggers
 - Test on arm64.
-- Fix exception propagation with MSVC in certain situations with multi-shot prompts.
 - ...
 
 [split]: https://gcc.gnu.org/wiki/SplitStacks
@@ -98,6 +97,20 @@ Pass the option `cmake ../.. -DMP_USE_C=ON` to build the C versions of the libra
 
 We use Visual Studio 2019 to develop the library -- open the solution 
 in `ide/vs2019/libmprompt.sln` to build and test.
+
+### Issues
+
+Some known issues are:
+
+- `gdb`, `lldb`: when using _gpools_ you will see segmentation fault errors (`SEGV`)
+  which happen when demand paging stack memory; you need to continue through those
+  or set the debugger to ignore them (enter `handle SIGSEGV nostop` in `gdb`).
+
+- `lldb` on macOSX: seg faults in `libunwind` when a C++ `throw` happens.
+
+- On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably
+  (and currently on Windows _gpools_ always need to be used). Backtraces only span
+  over prompts if the parent prompt happens to be at a higher address.
 
 
 ## Libmprompt
