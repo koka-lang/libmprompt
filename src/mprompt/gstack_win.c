@@ -16,6 +16,7 @@
 // Interface
 // -----------------------------------------------------
 
+static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* available, uint8_t** base);
 static bool  mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_initial);
 static void  mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit);
 static DWORD mp_win_get_error(void);
@@ -173,28 +174,30 @@ static void mp_gstack_os_thread_init(void) {
 
 static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep);
 
-static bool mp_gstack_os_init(void) {
-  // for now we always enable gpools or otherwise exceptions don't work
-  os_use_gpools = true;
+static uint8_t* mp_win_main_stack_base;
 
+static bool mp_gstack_os_init(void) {
   // page size
   SYSTEM_INFO sys_info;
   GetSystemInfo(&sys_info);
   os_page_size = sys_info.dwPageSize;
 
+  // remember the system stack
+  mp_win_get_stack_extent(NULL, NULL, &mp_win_main_stack_base);
+
   // set up thread termination routine
   mp_win_fls_key = FlsAlloc(&mp_win_thread_done);
   atexit(&mp_win_process_done);
 
-  if (os_use_gpools) {
-    // install a page fault handler to grow stackson demand 
-    PVOID handler = AddVectoredExceptionHandler(1, &mp_gstack_win_page_fault);
-    if (handler == NULL) {
-      mp_error_message(EINVAL, "unable to install page fault handler (code %xu) -- fall back to guarded demand paging\n", mp_win_get_error());
-      os_use_gpools = false; // fall back to regular demand paging 
-    }
+  // install a page fault handler to grow gstack's on demand 
+  // we also install this even if no `gpool`s are used in order to guarantee enough
+  // stack space during exception unwinding on a gstack.
+  PVOID handler = AddVectoredExceptionHandler(1, &mp_gstack_win_page_fault);
+  if (handler == NULL) {
+    mp_error_message(EINVAL, "unable to install page fault handler (code %xu) -- fall back to guarded demand paging\n", mp_win_get_error());
+    os_use_gpools = false; // fall back to regular demand paging 
   }
-
+  
   return true;
 }
 
@@ -236,19 +239,36 @@ static mp_decl_noinline uint8_t* mp_win_current_sp(void) {
   return mp_win_addr(&b);
 }
 
+static uint8_t* mp_win_tib_get_stack_extent(const MP_TIB* tib, ssize_t* commit_available, ssize_t* available, uint8_t** base) {
+  uint8_t* sp = mp_win_current_sp();
+  mp_assert_internal(os_stack_grows_down);
+  bool instack = (sp > tib->StackRealLimit && sp <= tib->StackBase);
+  if (commit_available != NULL) *commit_available = (instack ? sp - tib->StackLimit : 0);
+  if (available != NULL) *available = (instack ? sp - tib->StackRealLimit : 0);
+  if (base != NULL) *base = tib->StackBase;
+  return (instack ? sp : NULL);
+}
+
+static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* available, uint8_t** base) {
+  MP_TIB* tib = mp_win_tib();
+  return mp_win_tib_get_stack_extent(tib, commit_available, available, base);
+}
+
 #define MP_CPP_EXN 0xE06D7363  // "msc"
 
 // Guard page fault handler: not required as Windows already grows stacks with a guard
 // page automatically; we use it to grow the stack exponentially for performance when using
 // gpool's (`os_use_gpools`).
 //
-// To avoid errors during RtlUnwindEx we also commit an extra stack page if a C++ exception is 
-// thrown and little stack space is available.
+// To avoid errors during RtlUnwindEx we also commit extra stack space if a C++ exception is 
+// thrown and little stack space is available. This is needed upfront as once an exception is 
+// being unwound, our fault handler cannot be invoked again during that time.
 // Todo: should we also do this for other (system) exceptions?
 static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   const DWORD exncode = ep->ExceptionRecord->ExceptionCode;
-  if (!os_use_gpools ||
-      (exncode != STATUS_STACK_OVERFLOW && exncode != STATUS_ACCESS_VIOLATION && exncode != MP_CPP_EXN)) {  // STATUS_GUARD_PAGE_VIOLATION
+  if (!((exncode == MP_CPP_EXN) ||
+        (os_use_gpools && (exncode == STATUS_STACK_OVERFLOW || exncode == STATUS_ACCESS_VIOLATION))))  // STATUS_GUARD_PAGE_VIOLATION
+  {
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
@@ -256,16 +276,28 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   MP_TIB* tib = mp_win_tib();
   uint8_t* const addr = (exncode!=MP_CPP_EXN ? (uint8_t*)ep->ExceptionRecord->ExceptionInformation[1] : tib->StackLimit - 8); 
   uint8_t* const page = mp_align_down_ptr(addr, os_page_size); 
-  ssize_t commit_available = mp_win_current_sp() - tib->StackLimit;
-  ssize_t available;
-  int res = mp_gpools_is_accessible(page, &available, NULL);
+  ssize_t available = 0;
+  int res = 0;
+  if (os_use_gpools) {
+    // with a gpool we can reliably detect if there is available space in one of our gstack's
+    res = mp_gpools_is_accessible(page, &available, NULL);
+  }
+  else {
+    // not using gpools; for C++ exception we still need to guarantee a certain amount of stack space
+    ssize_t commit_available;
+    uint8_t* base;
+    uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, &available, &base);
+    if (sp != NULL && base != mp_win_main_stack_base &&   // check we only grow the current stack
+        commit_available < os_gstack_exn_guaranteed &&    // don't grow if not needed
+        available >= os_gstack_exn_guaranteed) {           
+      res = 1;
+    }
+  }
 
-  if ((res == 1 && exncode == STATUS_STACK_OVERFLOW) || 
-      (res == 1 && exncode == MP_CPP_EXN && commit_available < os_page_size)) 
-  {
+  if (res == 1 && (exncode == STATUS_STACK_OVERFLOW || exncode == MP_CPP_EXN)) {
     // pointer in our gpool stack, make the page read-write
-    // mp_trace_message("  segv: unprotect page\n");
-    // use exponential growth; important for performance, see `main.cpp:test1M`.
+    // or, c++ throw and we need to guarantee stack size before the exception is being unwound.
+    // use doubling growth; important for performance, see `main.cpp:test1M`.
     ULONG    guaranteed = 0;
     SetThreadStackGuarantee(&guaranteed);
     const ssize_t  guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
@@ -273,7 +305,7 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
     ssize_t extra = 0;
     ssize_t used = os_gstack_size - os_gstack_gap - available;
     if (used > 0) {
-      extra = (exncode != MP_CPP_EXN ? 2 * used : os_page_size);  // doubling.. (or just one extra page for exceptions)
+      extra = (exncode != MP_CPP_EXN ? 2 * used : os_gstack_exn_guaranteed);  // doubling.. (or just guaranteed size for exceptions)
     }
     if (extra > 1 * MP_MIB) {
       extra = 1 * MP_MIB;   // up to 1MiB growh
@@ -297,12 +329,11 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
     }
   }
   else if (res == 2 && exncode == STATUS_ACCESS_VIOLATION) {
-    // at first page for zero'ing
+    // at the start of a gpool for zero'ing
     if (VirtualAlloc(page, os_page_size, MEM_COMMIT, PAGE_READWRITE) != NULL) {
       return EXCEPTION_CONTINUE_EXECUTION;
     }
   }
-  
 
   return EXCEPTION_CONTINUE_SEARCH;  
 }

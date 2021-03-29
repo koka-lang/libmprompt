@@ -46,7 +46,8 @@ static ssize_t os_gstack_initial_commit   = 0;             // initial commit siz
 static ssize_t os_gstack_size             = 8 * MP_MIB;    // reserved memory for a stack (including the gaps)
 static ssize_t os_gstack_gap              = 64 * MP_KIB;   // noaccess gap between stacks; `os_gstack_gap > min(64*1024, os_page_size, os_gstack_size/2`.
 static bool    os_gstack_reset_decommits  = false;         // force full decommit when resetting a stack?
-static ssize_t os_gstack_cache_size       = 4;             // thread local cache size
+static ssize_t os_gstack_cache_count      = 4;             // number of prompts to keep in the thread local cache
+static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
 static ssize_t os_gpool_max_size          = 256 * MP_GIB;  // virtual size of one gstack pooled area (holds about 2^15 gstacks)
 
 
@@ -170,7 +171,7 @@ mp_gstack_t* mp_gstack_alloc(void)
   // first look in our thread local cache..
   mp_gstack_t** cache = _mp_gstack_cache;
   if (cache != NULL) {
-    for (int i = 0; i < os_gstack_cache_size; i++) {
+    for (int i = 0; i < os_gstack_cache_count; i++) {
       g = cache[i];
       if (g != NULL) {
         cache[i] = NULL;
@@ -235,7 +236,7 @@ void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fu
 #if _WIN32
   if (os_use_gpools) {
     // set an artificially low stack limit so our page fault handler gets called and we 
-    // can commit exponentially to improve performance.
+    // can commit quadratically to improve performance.
     ULONG guaranteed = 0;
     SetThreadStackGuarantee(&guaranteed);
     base_limit = base_commit_limit - os_page_size - mp_align_up(guaranteed, os_page_size);
@@ -254,7 +255,7 @@ void mp_gstack_free(mp_gstack_t* g) {
   // first try to put it in our thread local cache...
   mp_gstack_t** cache = _mp_gstack_cache;
   if (cache != NULL) {
-    for (int i = 0; i < os_gstack_cache_size; i++) {
+    for (int i = 0; i < os_gstack_cache_count; i++) {
       if (cache[i] == NULL) {
         // free slot, use it
         // If the cookie is valid, we assume the guard page was never hit and we don't need to do anything.
@@ -279,7 +280,7 @@ void mp_gstack_free(mp_gstack_t* g) {
 void mp_gstack_clear_cache(void) {
   mp_gstack_t** cache = _mp_gstack_cache;
   if (cache != NULL) {
-    for (int i = 0; i < os_gstack_cache_size; i++) {
+    for (int i = 0; i < os_gstack_cache_count; i++) {
       mp_gstack_t* gs = cache[i];
       cache[i] = NULL;
       if (gs != NULL) {
@@ -336,11 +337,11 @@ static void mp_gstack_thread_init(void);  // called from `mp_gstack_init`
 
 
 // Init (called by mp_prompt_init and gstack_alloc)
-bool mp_gstack_init(ssize_t gstack_size, ssize_t gpool_max_size) {
+bool mp_gstack_init(ssize_t gstack_max_size, ssize_t gpool_max_size) {
   if (os_page_size == 0) {
     // user settings
-    if (gstack_size > 1) {
-      os_gstack_size = mp_align_up(gstack_size, 4 * MP_KIB);
+    if (gstack_max_size > 1) {
+      os_gstack_size = mp_align_up(gstack_max_size, 4 * MP_KIB);
     }
     if (gpool_max_size == 0) {
       os_use_gpools = false;
@@ -355,6 +356,7 @@ bool mp_gstack_init(ssize_t gstack_size, ssize_t gpool_max_size) {
 
     // ensure stack sizes are page aligned
     os_gstack_size = mp_align_up(os_gstack_size, os_page_size);
+    os_gstack_exn_guaranteed = mp_align_up(os_gstack_exn_guaranteed, os_page_size);
     os_gstack_initial_commit = (os_gstack_initial_commit == 0 ? os_page_size : mp_align_up(os_gstack_initial_commit, os_page_size));
     if (os_gstack_initial_commit > os_gstack_size) os_gstack_initial_commit = os_gstack_size;
     os_gpool_max_size = mp_align_up(os_gpool_max_size, os_page_size);
@@ -382,8 +384,8 @@ static void mp_gstack_thread_init(void) {
   mp_gstack_os_thread_init();
   
   // create cache
-  if (os_gstack_cache_size > 0) {
-    _mp_gstack_cache = (mp_gstack_t**)mp_zalloc((os_gstack_cache_size + 1) * sizeof(void*));
+  if (os_gstack_cache_count > 0) {
+    _mp_gstack_cache = (mp_gstack_t**)mp_zalloc((os_gstack_cache_count + 1) * sizeof(void*));
   }
 }
 
