@@ -91,7 +91,7 @@ typedef enum mpe_opkind_e {
   MPE_OP_MULTI        ///< resume never or multiple times.
 } mpe_opkind_t;
 
-/// Opereation defintion.
+/// Operation defintion.
 /// An `operation` has a kind, an identifying tag, and an associated operation function.
 typedef struct mpe_operation_s {
   mpe_opkind_t opkind;  ///< Kind of the operation

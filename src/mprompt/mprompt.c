@@ -409,6 +409,10 @@ long mp_mresume_resume_count(mp_mresume_t* r) {
   return r->resume_count;
 }
 
+bool mp_mresume_should_unwind(mp_mresume_t* r) {  
+  return (r->refcount == 1 && r->resume_count == 0);
+}
+
 // Decrement the reference count of a resumption.
 void mp_mresume_drop(mp_mresume_t* r) {
   int64_t i = r->refcount--;

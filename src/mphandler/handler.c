@@ -190,6 +190,19 @@ static void mpe_unwind_to(mpe_frame_handle_t* target, const mpe_operation_t* op,
 }
 #endif
 
+MPE_DEFINE_EFFECT1(mpe_unwind, mpe_unwind);
+
+static void* mpe_handle_op_unwind(mpe_resume_t* r, void* local, void* arg) {
+  (void)(r); (void)(local);
+  mpe_assert_internal(r == NULL);
+  return arg;
+}
+
+static mpe_operation_t mpe_op_unwind = {
+  MPE_OP_ABORT,
+  MPE_OPTAG(mpe_unwind,mpe_unwind),
+  &mpe_handle_op_unwind
+};
 
 /*-----------------------------------------------------------------
   Effect and optag names
@@ -219,6 +232,7 @@ typedef struct mpe_perform_env_s {
 typedef struct mpe_resume_env_s {
   void* local;
   void* result;
+  bool  unwind;
 } mpe_resume_env_t;
 
 
@@ -238,9 +252,12 @@ static void* mpe_perform_yield_to(mpe_frame_handle_t* h, const mpe_operation_t* 
   // yield up
   mpe_resume_env_t* renv = (mpe_resume_env_t*)mp_yield(h->prompt, &mpe_perform_op_clause, &penv);
   // resumed!
-  h->local = renv->local;         // set new state
+  h->local = renv->local;           // set new state
   h->frame.parent = mpe_frame_top;  // relink handlers
   mpe_frame_top = resume_top;
+  if (renv->unwind) {
+    mpe_unwind_to(h, &mpe_op_unwind, renv->result);
+  }
   return renv->result;
 }
 
@@ -264,6 +281,9 @@ static void* mpe_perform_yield_to_multi(mpe_frame_handle_t* h, const mpe_operati
   h->local = renv->local;         // set new state
   h->frame.parent = mpe_frame_top;  // relink handlers
   mpe_frame_top = resume_top;
+  if (renv->unwind) {
+    mpe_unwind_to(h, &mpe_op_unwind, renv->result);
+  }
   return renv->result;
 }
 
@@ -286,6 +306,9 @@ static void* mpe_perform_yield_to_scoped_once(mpe_frame_handle_t* h, const mpe_o
   h->local = renv->local;         // set new state
   h->frame.parent = mpe_frame_top;  // relink handlers
   mpe_frame_top = resume_top;
+  if (renv->unwind) {
+    mpe_unwind_to(h, &mpe_op_unwind, renv->result);
+  }
   return renv->result;
 }
 
@@ -442,9 +465,9 @@ void* mpe_handle(const mpe_handlerdef_t* hdef, void* local, mpe_actionfun_t* bod
   Resume
 -----------------------------------------------------------------*/
 
-static void* mpe_resume_internal(bool final, mpe_resume_t* resume, void* local, void* arg) {
+static void* mpe_resume_internal(bool final, mpe_resume_t* resume, void* local, void* arg, bool unwind) {
   mpe_assert(resume->kind >= MPE_RESUMPTION_SCOPED_ONCE);
-  mpe_resume_env_t renv = { local, arg };
+  mpe_resume_env_t renv = { local, arg, unwind };
   // and resume
   if (resume->kind == MPE_RESUMPTION_SCOPED_ONCE) {
     mp_resume_t* mpr = resume->mp.resume_once;
@@ -470,14 +493,19 @@ static void* mpe_resume_internal(bool final, mpe_resume_t* resume, void* local, 
   }
 }
 
+// Resume to unwind (e.g. run destructors and finally clauses)
+static void mpe_resume_unwind(mpe_resume_t* r) {
+  mpe_resume_internal(true, r, NULL, NULL, true);
+}
+
 // Last use of a resumption
 void* mpe_resume_final(mpe_resume_t* resume, void* local, void* arg) {
-  return mpe_resume_internal(true, resume, local, arg);
+  return mpe_resume_internal(true, resume, local, arg, false);
 }
 
 // Regular resume
 void* mpe_resume(mpe_resume_t* resume, void* local, void* arg) {
-  return mpe_resume_internal(false, resume, local, arg);
+  return mpe_resume_internal(false, resume, local, arg, false);
 }
 
 // Last resume in tail-position
@@ -504,18 +532,27 @@ void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {
   }
 }
 
+
 // Release without resuming 
 void mpe_resume_release(mpe_resume_t* resume) {
   if (resume == NULL) return; // in case someone tries to release a NULL (OP_NEVER) resumption
   if (resume->kind == MPE_RESUMPTION_ONCE) {
+    mpe_resume_unwind(resume);
+    /*
     mp_resume_t* mpr = resume->mp.resume_once;
     mpe_free(resume);         // always assume final?
     mp_resume_drop(mpr);
+    */
   }
   else {
     mpe_assert_internal(resume->kind == MPE_RESUMPTION_MULTI);
     mp_mresume_t* mpr = resume->mp.resume_multi;
-    mpe_free(resume); 
-    mp_mresume_drop(mpr);
+    if (mp_mresume_should_unwind(mpr)) {
+      mpe_resume_unwind(resume);
+    }
+    else {
+      mpe_free(resume);
+      mp_mresume_drop(mpr);
+    }
   }
 }

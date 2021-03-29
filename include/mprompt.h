@@ -75,6 +75,8 @@ mp_decl_export void mp_mprompt_init(size_t gstack_size, size_t gpool_max_size);
 
 // Low-level access
 mp_decl_export long         mp_mresume_resume_count(mp_mresume_t* r);
+mp_decl_export bool         mp_mresume_should_unwind(mp_mresume_t* r);  // refcount==1 && resume_count==0
+
 mp_decl_export mp_prompt_t* mp_prompt_create(void);
 mp_decl_export void*        mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg);
 mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
