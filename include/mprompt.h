@@ -64,6 +64,7 @@ mp_decl_export void* mp_mresume_tail(mp_mresume_t* r, void* arg);
 mp_decl_export void  mp_mresume_drop(mp_mresume_t* r);
 mp_decl_export mp_mresume_t* mp_mresume_dup(mp_mresume_t* r);
 
+
 // Initialize explicitly:
 //  gstack_size   : pass 0 to use default (8MiB virtual)
 //  max_gpool_size: pass 0 to not use gpools if possible (only on Windows and Linux with overcommit enabled)
@@ -73,6 +74,7 @@ mp_decl_export void mp_mprompt_init(size_t gstack_size, size_t gpool_max_size);
 
 
 // Low-level access
+mp_decl_export long         mp_mresume_resume_count(mp_mresume_t* r);
 mp_decl_export mp_prompt_t* mp_prompt_create(void);
 mp_decl_export void*        mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg);
 mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
@@ -80,13 +82,14 @@ mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
 
 
 // to be fixed... 
-
+#ifdef _WIN32
 void mp_throw_prepare(void);
 #define mp_throw    mp_throw_prepare(), throw
 
-#ifdef _WIN32
 #include <stdint.h>
 mp_decl_export void mp_win_trace_stack_layout(uint8_t* base, uint8_t* base_limit);
+#else
+#define mp_throw    throw
 #endif
 
 

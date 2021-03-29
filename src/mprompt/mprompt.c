@@ -89,6 +89,7 @@ typedef struct mp_prompt_save_s {
 // Only copies the original stack if it is actually being resumed more than once.
 struct mp_mresume_s {
   intptr_t           refcount;
+  long               resume_count;       // count number of resumes.
   mp_prompt_t*       prompt;
   mp_prompt_save_t*  save;
   mp_return_point_t* tail_return_point;  // need to save this as the one in the prompt may be overwritten by earlier resumes
@@ -259,6 +260,7 @@ static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, m
     mp_mresume_t* r = mp_malloc_safe_tp(mp_mresume_t);
     r->prompt = p;
     r->refcount = 1;
+    r->resume_count = 0;
     r->save = NULL;
     r->tail_return_point = p->return_point;
     return ((mp_myield_fun_t*)ret->fun)(r, ret->arg);    
@@ -403,6 +405,10 @@ mp_mresume_t* mp_mresume_dup(mp_mresume_t* r) {
   return r;
 }
 
+long mp_mresume_resume_count(mp_mresume_t* r) {
+  return r->resume_count;
+}
+
 // Decrement the reference count of a resumption.
 void mp_mresume_drop(mp_mresume_t* r) {
   int64_t i = r->refcount--;
@@ -472,6 +478,7 @@ static mp_prompt_t* mp_resume_get_prompt(mp_mresume_t* r) {
 
 // Resume with a regular resumption (and consumes `r` so dup if it needs to used later on)
 void* mp_mresume(mp_mresume_t* r, void* arg) {
+  r->resume_count++;
   mp_prompt_t* p = mp_resume_get_prompt(r);
   return mp_prompt_resume(p, arg);  // set a fresh prompt 
 }
@@ -486,6 +493,7 @@ void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
   }
   else {
     r->tail_return_point = NULL;
+    r->resume_count++;
     mp_prompt_t* p = mp_resume_get_prompt(r);
     return mp_resume_tail_to(p, arg, ret);      // resume tail by reusing the original entry return point
   }

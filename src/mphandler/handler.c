@@ -178,15 +178,15 @@ public:
   }
 };
 
-static void mpe_unwind(mpe_frame_handle_t* target, const mpe_operation_t* op, void* arg) {
+static void mpe_unwind_to(mpe_frame_handle_t* target, const mpe_operation_t* op, void* arg) {
   //fprintf(stderr, "throw unwind..\n");
   mp_throw mpe_unwind_exception(target, op, arg);
 }
 #else
-static void* mpe_perform_yield_to_never(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg);
-static void mpe_unwind(mpe_frame_handle_t* target, const mpe_operation_t* op, void* arg) {
+static void* mpe_perform_yield_to_abort(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg);
+static void mpe_unwind_to(mpe_frame_handle_t* target, const mpe_operation_t* op, void* arg) {
   // TODO: walk the handlers and invoke finally frames
-  mpe_perform_yield_to_never(target, op, arg);
+  mpe_perform_yield_to_abort(target, op, arg);
 }
 #endif
 
@@ -291,15 +291,15 @@ static void* mpe_perform_yield_to_scoped_once(mpe_frame_handle_t* h, const mpe_o
 
 
 // Never resumption
-static void* mpe_perform_op_clause_never(mp_resume_t* mpr, void* earg) {
+static void* mpe_perform_op_clause_abort(mp_resume_t* mpr, void* earg) {
   mpe_perform_env_t env = *((mpe_perform_env_t*)earg);  // copy out all args before dropping the prompt
   mp_resume_drop(mpr);
   return (env.opfun)(NULL, env.local, env.oparg);
 }
 
-static void* mpe_perform_yield_to_never(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
+static void* mpe_perform_yield_to_abort(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
   mpe_perform_env_t env = { op->opfun, h->local, arg };
-  return mp_yield(h->prompt, &mpe_perform_op_clause_never, &env);
+  return mp_yield(h->prompt, &mpe_perform_op_clause_abort, &env);
 }
 
 
@@ -335,11 +335,11 @@ static void* mpe_perform_at(mpe_frame_handle_t* h, const mpe_operation_t* op, vo
     return mpe_perform_yield_to(h, op, arg);
   }
   else if (opkind == MPE_OP_NEVER) {
-    mpe_unwind(h, op, arg);
+    mpe_unwind_to(h, op, arg);
     return NULL; // never reached
   }
   else if (opkind == MPE_OP_ABORT) {
-    return mpe_perform_yield_to_never(h, op, arg);
+    return mpe_perform_yield_to_abort(h, op, arg);
   }
   else {
     return mpe_perform_yield_to_multi(h, op, arg);    
@@ -417,10 +417,10 @@ static mpe_decl_noinline void* mpe_handle_start(mp_prompt_t* prompt, void* earg)
   catch (const mpe_unwind_exception& e) {
     if (e.target != &h) {
       //fprintf(stderr, "rethrow unwind\n");
-      throw;  // rethrow 
+      mp_throw;  // rethrow 
     }
     //fprintf(stderr, "catch unwind\n");
-    return mpe_perform_yield_to_never(e.target, e.op, e.arg);    
+    return mpe_perform_yield_to_abort(e.target, e.op, e.arg);  // yield to ourselves (exiting this prompt)
   }
   #endif
   // potentially run return function
@@ -509,7 +509,7 @@ void mpe_resume_release(mpe_resume_t* resume) {
   if (resume == NULL) return; // in case someone tries to release a NULL (OP_NEVER) resumption
   if (resume->kind == MPE_RESUMPTION_ONCE) {
     mp_resume_t* mpr = resume->mp.resume_once;
-    mpe_free(resume); // always assume final?
+    mpe_free(resume);         // always assume final?
     mp_resume_drop(mpr);
   }
   else {
