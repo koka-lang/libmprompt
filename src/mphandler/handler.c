@@ -510,7 +510,7 @@ void* mpe_resume(mpe_resume_t* resume, void* local, void* arg) {
 
 // Last resume in tail-position
 void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {  
-  if (resume->kind == MPE_RESUMPTION_INPLACE) {
+  if (mpe_likely(resume->kind == MPE_RESUMPTION_INPLACE)) {
     *resume->mp.plocal = local;
     return arg;
   }
