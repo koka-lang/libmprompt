@@ -409,7 +409,7 @@ long mp_mresume_resume_count(mp_mresume_t* r) {
   return r->resume_count;
 }
 
-bool mp_mresume_should_unwind(mp_mresume_t* r) {  
+int mp_mresume_should_unwind(mp_mresume_t* r) {  
   return (r->refcount == 1 && r->resume_count == 0);
 }
 
