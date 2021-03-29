@@ -514,7 +514,7 @@ void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {
     *resume->mp.plocal = local;
     return arg;
   }
-  mpe_resume_env_t renv = { local, arg };
+  mpe_resume_env_t renv = { local, arg, false };
   // and tail resume
   if (resume->kind == MPE_RESUMPTION_SCOPED_ONCE) {
     mp_resume_t* mpr = resume->mp.resume_once;
@@ -535,7 +535,7 @@ void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {
 
 // Release without resuming 
 void mpe_resume_release(mpe_resume_t* resume) {
-  if (resume == NULL) return; // in case someone tries to release a NULL (OP_NEVER) resumption
+  if (resume == NULL) return; // in case someone tries to release a NULL (OP_NEVER or OP_ABORT) resumption
   if (resume->kind == MPE_RESUMPTION_ONCE) {
     mpe_resume_unwind(resume);
     /*
