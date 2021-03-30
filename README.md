@@ -405,10 +405,10 @@ also how exceptions are propagated):  (rule (RETURN))
                                                 .            .
 ```
 
-See [`prompt.c`](src/mprompt/mprompt.c) for the implementation of this.
+See [`mprompt.c`](src/mprompt/mprompt.c) for the implementation of this.
 
 
-### Backtraces
+## Backtraces
 
 A nice property of muli-prompts is that there is always
 a single strand of execution, together with suspended prompts.
