@@ -400,7 +400,7 @@ also how exceptions are propagated):  (rule (RETURN))
 .             .         | 43          |<<<      (cached to reuse)
 .             .         .             .         |------------|
                         .             .         |            |
-                        .             .         |            |                                                
+                        .             .         |            |
                                                 .            .
                                                 .            .
 ```
