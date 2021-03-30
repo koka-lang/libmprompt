@@ -109,7 +109,7 @@ Some known issues are:
 - `lldb` on macOS is unable to continue after a demand-page `SEGV`
   due to a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868).
   A workaround is to set the gstack initial commit high enough to avoid 
-  demand paging during debugging (use `config.stack_initial_commit=64*1024L;` for [example](test/main.c)).
+  demand paging during debugging (use `config.stack_initial_commit=64*1024L;` for [example](test/main.c#L30)).
 
 - On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably. 
   Backtraces in Visual Studio only span over prompts if the parent prompt happens 
@@ -199,6 +199,9 @@ continues with executing `f` (popping the prompt) but with the argument
 `\x. @prompt m E[x]` which is the resumption function: calling it will
 restore the prompt and the original execution
 context `E` (!), and resume execution at the original yield location.
+(Note: in the C implementation, the unique markers `m` are simply
+represented directly by a `mp_prompt_t*`)
+
 These primitives are very expressive but can still be strongly
 typed in simply typed lambda calculus and are thus sound and
 composable:
@@ -404,6 +407,8 @@ for debugging compared to callback based programming for example.
 A small library on top of `libmprompt` that implements
 algebraic effect handlers. Effect handlers give more structure
 than basic multi-prompts and are easier to use.
+See [`effects.c`](test/effects.c) for many examples of common 
+effect patterns.
 
 ```C
 // handle an effect 
