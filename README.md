@@ -199,8 +199,10 @@ continues with executing `f` (popping the prompt) but with the argument
 `\x. @prompt m E[x]` which is the resumption function: calling it will
 restore the prompt and the original execution
 context `E` (!), and resume execution at the original yield location.
+At runtime, yielding to a prompt that is no longer in scope (i.e.
+in the evalution context) is an error (e.g. like an unhandled exception).
 (Note: in the C implementation, the unique markers `m` are simply
-represented directly by a `mp_prompt_t*`)
+represented directly by a `mp_prompt_t*`).
 
 These primitives are very expressive but can still be strongly
 typed in simply typed lambda calculus and are thus sound and
