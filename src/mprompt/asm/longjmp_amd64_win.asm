@@ -169,43 +169,11 @@ mp_longjmp ENDP
 ; - gs:16 the limit (lowest address)
 ; - gs:5240 the stack guarantee; set to limit on entry
 ; Before a call, we need to reserve 32 bytes of shadow space for the callee to spill registers in.
-mp_stack_enter_plain PROC FRAME 
-  mov     r10, rsp         ; old rsp
-  mov     r11, [rsp]       ; rip
-  sub     rsp, 40          ; home area + align
-.ALLOCSTACK 40
-.ENDPROLOG
 
-  mov     gs:[8], rcx      ; set new stack base
-  mov     gs:[16], rdx     ; commit limit for stack probes (i.e. __chkstk)
-  mov     gs:[5240], r8    ; (virtual) stack limit   
-
-  and     rcx, NOT 15      ; align new stack base
-  mov     rsp, rcx         ; switch the stack
-  push    r11              ; help unwinding code by putting in return rip (remove?)
-  push    r9               ; save return jmpbuf_t**
-  sub     rsp, 32          ; home space 
-
-  mov     rax, [r10+40]    ; fun
-  mov     rcx, [r10+48]    ; set arg from old stack
-  xor     rdx, rdx         ; no trap frame
-  call    rax              ; and call the function (it should never return but use longjmp)
-  
-  ; we should never reach this...
-  call    abort        
-
-  mov     rcx, [rsp+40]    ; load return jmpbuf_t* in rcx
-  mov     rcx, [rcx]       
-  jmp     mp_longjmp
-
-mp_stack_enter_plain ENDP
-
-
-; Push a trap frame so it can be unwound
-; This work currently best with unwinding, but it is still not quite enough since the stack 
-; limits in the thread local TIB are not updated; 
-; For exceptions we will need to catch and propagate manually through prompt points anyways.
-; But perhaps this can become useful in the future?
+; Push a trap frame so it can be unwound for a backtrace. (This is not quite enough for exception
+; unwinding since the stack limits in the thread local TIB are not updated. For exceptions we will 
+; need to catch and propagate manually through prompt points anyways). 
+; Todo: currently we do not update the frame when the return point changes.
 mp_stack_enter PROC FRAME
   mov     r10, rsp          ; save rsp in r10
   mov     r11, [r10]        ; rip     
@@ -255,5 +223,38 @@ mp_stack_enter PROC FRAME
   jmp     mp_longjmp       ; and longjmp
 
 mp_stack_enter ENDP
+
+; unused plain version without machine frame
+mp_stack_enter_plain PROC FRAME 
+  mov     r10, rsp         ; old rsp
+  mov     r11, [rsp]       ; rip
+  sub     rsp, 40          ; home area + align
+.ALLOCSTACK 40
+.ENDPROLOG
+
+  mov     gs:[8], rcx      ; set new stack base
+  mov     gs:[16], rdx     ; commit limit for stack probes (i.e. __chkstk)
+  mov     gs:[5240], r8    ; (virtual) stack limit   
+
+  and     rcx, NOT 15      ; align new stack base
+  mov     rsp, rcx         ; switch the stack
+  push    r11              ; help unwinding code by putting in return rip (remove?)
+  push    r9               ; save return jmpbuf_t**
+  sub     rsp, 32          ; home space 
+
+  mov     rax, [r10+40]    ; fun
+  mov     rcx, [r10+48]    ; set arg from old stack
+  xor     rdx, rdx         ; no trap frame
+  call    rax              ; and call the function (it should never return but use longjmp)
+  
+  ; we should never reach this...
+  call    abort        
+
+  mov     rcx, [rsp+40]    ; load return jmpbuf_t* in rcx
+  mov     rcx, [rcx]       
+  jmp     mp_longjmp
+
+mp_stack_enter_plain ENDP
+
 
 END
