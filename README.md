@@ -162,13 +162,14 @@ can be described precisely:
 Syntax:
 ```ioke
 e ::= v              ; value
-   |  e1 e2          ; application
-   |  yield m f      ; yield to a prompt identified by marker `m`
+   |  e e            ; application
+   |  yield m v      ; yield to a prompt identified by marker `m`
    |  prompt v       ; start a new prompt (passing its marker to `v`)
    |  @prompt m e    ; internal: a prompt frame identified by marker `m`
 
-v ::= \x. e          ; function with parameter `x` (lambda expression)
-   |  ...
+v ::= x              ; variables
+   |  \x. e          ; function with parameter `x` (lambda expression)
+   |  ...            ; integer constants, primitives (e.g. addition), etc.
 ```
 
 Evaluation context:
@@ -198,12 +199,17 @@ We can now keep evaluating inside an expression context using small step transit
 (YIELD)    @prompt m E[yield m f]   ---->  f (\x. @prompt m E[x])   ; yield to prompt frame `m`, capturing context `E`
 ```
 
+Note how in `(YIELD)` we yield with a function `f` to a prompt `m`. This
+continues with executing `f` (popping the prompt) but with the argument
+`\x. @prompt m E[x]` which is the resumption function: calling it will
+restore the prompt and the original execution
+context `E` (!), and resume execution at the original yield location.
 For example:
 
 ```ioke
-       prompt (\x. 1 + yield x (\k. k 41))
+       prompt (\x. 1 + yield x (\k. k 41))            
 |----> @prompt m ((\x. 1 + yield x (\k. k 41)) m)     ; fresh marker `m`
-|----> @prompt m (1 + yield m (\k. k 41))
+|----> @prompt m (1 + yield m (\k. k 41))             ; note: `\k. k 41` is the function that is yielded up
 ==     @prompt m ((1 + [])[yield m (\k. k 41)])       ; yield back up to `m`, capturing E
 |----> (\k. k 41) (\x. @prompt m (1 + [])[x])         ; continue with the function of the yield
 |----> (\x. @prompt m (1 + [])[x]) 41                 ; resume by applying `k`
@@ -213,11 +219,6 @@ For example:
 |----> 43
 ```
 
-Note how in `(YIELD)` we yield with a function `f` to a prompt `m`. This
-continues with executing `f` (popping the prompt) but with the argument
-`\x. @prompt m E[x]` which is the resumption function: calling it will
-restore the prompt and the original execution
-context `E` (!), and resume execution at the original yield location.
 At runtime, yielding to a prompt that is no longer in scope (i.e.
 in the evalution context) is an error (e.g. like an unhandled exception).
 (Note: in the C implementation, the unique markers `m` are simply
