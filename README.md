@@ -81,7 +81,7 @@ Todos:
 
 We use `cmake` to build:
 
-```ioke
+```
 > mkdir out/debug    # or out/release
 > cd out/debug
 > cmake ../..
@@ -178,7 +178,10 @@ E ::= []            ; hole
    |  v E           ; and then the argument 
    |  @prompt m E   ; we can evaluate under a prompt frame
 ```
-An evaluation context essentially describes the stack+registers where the hole is the current instruction pointer.
+An evaluation context is an expression with a hole at the current point in the 
+evalution. It essentially describes the stack+registers where the hole is the current instruction pointer.
+We can apply an context to an expression using square bracets `E[x]`; 
+for example, `(@prompt m (f (g [])))[x]` becomes `@prompt m (f (g x))`.
 
 Operational semantics:
 ```ioke
@@ -190,12 +193,27 @@ Operational semantics:
 We can now keep evaluating inside an expression context using small step transitions:
 ```ioke
 (APP)      (\x. e) v                ---->  e[x := v]                ; beta-rule, application
-(NEWP)     prompt v                 ---->  @prompt m (v m)          ; install a new prompt with a fresh marker `m`
-(PROMPT)   @prompt m v              ---->  v                        ; returning a result discards the prompt frame
+(PROMPT)   prompt v                 ---->  @prompt m (v m)          ; install a new prompt with a fresh marker `m`
+(RETURN)   @prompt m v              ---->  v                        ; returning a result discards the prompt frame
 (YIELD)    @prompt m E[yield m f]   ---->  f (\x. @prompt m E[x])   ; yield to prompt frame `m`, capturing context `E`
 ```
 
-Note how in (YIELD) we yield with a function `f` to a prompt `m`. This
+For example:
+
+```ioke
+       prompt (\x. 1 + yield x (\k. k 41))
+|----> @prompt m ((\x. 1 + yield x (\k. k 41)) m)     ; fresh marker `m`
+|----> @prompt m (1 + yield m (\k. k 41))
+==     @prompt m ((1 + [])[yield m (\k. k 41)])
+|----> (\k. k 41) (\x. @prompt m (1 + [])[x])
+|----> (\x. @prompt m (1 + [])[x]) 41
+|----> @prompt m ((1 + [])[42])
+==     @prompt m (1 + 42)
+|----> @prompt m 43
+|----> 43
+```
+
+Note how in `(YIELD)` we yield with a function `f` to a prompt `m`. This
 continues with executing `f` (popping the prompt) but with the argument
 `\x. @prompt m E[x]` which is the resumption function: calling it will
 restore the prompt and the original execution
@@ -238,7 +256,7 @@ see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Lei
 Each prompt starts a growable stacklet and executes from there.
 For example, we can have:
 ```ioke
-(stacklet 1)            (stacklet 2)            (stacklet 3)
+(stacklet 1)            (stacklet 2)             (stacklet 3)
 
 |-------------|
 | @prompt A   |
@@ -364,7 +382,7 @@ Suppose, stacklet 3 now returns normally with a result 43:
 ```
 
 Then the stacklets can unwind like a regular stack (this is
-also how exceptions are propagated):  (rule (PROMPT))
+also how exceptions are propagated):  (rule (RETURN))
 
 ```ioke
 (stacklet 1)            (stacklet 2)            (stacklet 3)
