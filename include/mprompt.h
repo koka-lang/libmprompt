@@ -70,6 +70,7 @@ mp_decl_export mp_mresume_t* mp_mresume_dup(mp_mresume_t* r);
 // Initialization
 //---------------------------------------------------------------------------
 #include <stddef.h>
+#include <stdbool.h>
 
 // Configuration settings; any zero value uses the default setting.
 typedef struct mp_config_s {
