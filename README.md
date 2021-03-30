@@ -46,7 +46,7 @@ Particular aspects:
 
 - We aim to support millions of prompts with fast yielding and resuming. If we run
   the [`mp_async_test1M`](test/main.c#L82) test we simulate an asynchronous
-  service which creates a fresh prompt on each connection, enters it and then suspends it
+  service which creates a fresh prompt on each "connection", enters it and then suspends it
   (simulating waiting for an async result).
   Later it is resumed again where it calls a function that consumes 32KiB stack space, 
   and finally returns. The test simulates 10 million connections with 10000 suspended 
@@ -56,7 +56,7 @@ Particular aspects:
   total stack used: 312500.000mb, count=10000000
   elapsed: 1.158s, user: 1.109s, sys: 0.049s, rss: 42mb, main rss: 39mb
   ```
-  This is about 8M connections per second (single threaded, Ubuntu 20, AMD5950X),
+  This is about 8M "connections" per second (single threaded, Ubuntu 20, AMD5950X),
   where each connection creates a fresh prompt and context switches 4 times.
 
 
