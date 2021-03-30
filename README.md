@@ -2,7 +2,7 @@
 
 
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
-Latest release: v0.1, 2021-03-25.
+Latest release: v0.2, 2021-03-29.
 
 A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
