@@ -180,7 +180,7 @@ E ::= []            ; hole
 ```
 An evaluation context is an expression with a hole at the current point in the 
 evalution. It essentially describes the stack+registers where the hole is the current instruction pointer.
-We can apply an context to an expression using square bracets `E[x]`; 
+We can apply a context to an expression using square bracets `E[x]`; 
 for example, `(@prompt m (f (g [])))[x]` becomes `@prompt m (f (g x))`.
 
 Operational semantics:
@@ -248,7 +248,7 @@ green thread scheduling, exceptions, iterators, async-await, etc.
 
 For a more in-depth explanation of multi-prompt delimited control,
 see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Leijen, MSR-TR-2021-5 
-[link](https://www.microsoft.com/en-us/research/publication/generalized-evidence-passing-for-effect-handlers/).
+([pdf](https://www.microsoft.com/en-us/research/publication/generalized-evidence-passing-for-effect-handlers/)).
 
 
 ### An implementation based on in-place growable stacks
@@ -404,6 +404,9 @@ also how exceptions are propagated):  (rule (RETURN))
                                                 .            .
                                                 .            .
 ```
+
+See [`prompt.c`](src/mprompt/mprompt.c) for the implementation of this.
+
 
 ### Backtraces
 
