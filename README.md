@@ -204,10 +204,10 @@ For example:
        prompt (\x. 1 + yield x (\k. k 41))
 |----> @prompt m ((\x. 1 + yield x (\k. k 41)) m)     ; fresh marker `m`
 |----> @prompt m (1 + yield m (\k. k 41))
-==     @prompt m ((1 + [])[yield m (\k. k 41)])
-|----> (\k. k 41) (\x. @prompt m (1 + [])[x])
-|----> (\x. @prompt m (1 + [])[x]) 41
-|----> @prompt m ((1 + [])[42])
+==     @prompt m ((1 + [])[yield m (\k. k 41)])       ; yield back up to `m`, capturing E
+|----> (\k. k 41) (\x. @prompt m (1 + [])[x])         ; continue with the function of the yield
+|----> (\x. @prompt m (1 + [])[x]) 41                 ; resume by applying `k`
+|----> @prompt m ((1 + [])[42])                       ; resumed to the yield with result 42
 ==     @prompt m (1 + 42)
 |----> @prompt m 43
 |----> 43
@@ -251,7 +251,7 @@ see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Lei
 [link](https://www.microsoft.com/en-us/research/publication/generalized-evidence-passing-for-effect-handlers/).
 
 
-### Low Level Implementation 
+### An implementation based on in-place growable stacks
 
 Each prompt starts a growable stacklet and executes from there.
 For example, we can have:
