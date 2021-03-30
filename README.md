@@ -238,7 +238,7 @@ When yielding to a marker of type `a`, the yielded function has type `(b -> a) -
 and must return results of type `a` (corresponding to the marker context).
 Meanwhile, the passed in resumption function `(b -> a)` expects an argument
 of type `b` to resume back to the yield point. Such simple types cannot be 
-given for example to any of `shift`/`reset`, `call/cc`, fibers, or co-routines, 
+given for example to any of `shift`/`reset`, `call/cc`, fibers, or |co-routines, 
 which is one aspect why we believe multi-prompt delimited control is preferable.
 
 The growable stacklets are used to make capturing- and resuming
@@ -257,7 +257,7 @@ see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Lei
 Each prompt starts a growable stacklet and executes from there.
 For example, we can have:
 ```ioke
-(stacklet 1)            (stacklet 2)             (stacklet 3)
+(gstack 1)              (gstack 2)              (gstack 3)
 
 |-------------|
 | @prompt A   |
@@ -284,7 +284,7 @@ just switching stacks. The resumption `r` is also
 just captured as a pointer and execution continues
 with `f(r)`: (rule (YIELD) with `r` = `\x. @prompt B(... @prompt C. 1+[])[x]`)
 ```ioke
-(stacklet 1)            (stacklet 2)            (stacklet 3)
+(gstack 1)              (gstack 2)              (gstack 3)
 
 |-------------|
 | @prompt A   |
@@ -309,7 +309,7 @@ Later we may want to resume the resumption `r` again with
 the result `42`: (`r(42)`)
 
 ```ioke
-(stacklet 1)            (stacklet 2)            (stacklet 3)
+(gstack 1)              (gstack 2)              (gstack 3)
 
 |-------------|
 | @prompt A   |
@@ -338,7 +338,7 @@ and their addresses stay valid (in their lexical scope).
 Again, we can just switch stacks to resume at the original
 yield location: 
 ```ioke
-(stacklet 1)            (stacklet 2)            (stacklet 3)
+(gstack 1)              (gstack 2)              (gstack 3)
 
 |-------------|
 | @prompt A   |
@@ -362,7 +362,7 @@ yield location:
 Suppose, stacklet 3 now returns normally with a result 43:
 
 ```ioke
-(stacklet 1)            (stacklet 2)            (stacklet 3)
+(gstack 1)              (gstack 2)              (gstack 3)
 
 |-------------|
 | @prompt A   |
@@ -386,7 +386,7 @@ Then the stacklets can unwind like a regular stack (this is
 also how exceptions are propagated):  (rule (RETURN))
 
 ```ioke
-(stacklet 1)            (stacklet 2)            (stacklet 3)
+(gstack 1)              (gstack 2)              (gstack 3)
 
 |-------------|
 | @prompt A   |
@@ -417,7 +417,7 @@ On Windows, a gstack is allocated as:
 
 ```ioke
 |------------|
-| xxxxxxxxxx | <-- no-access gap
+| xxxxxxxxxx | <-- noaccess gap (64 KiB by default)
 |------------| <-- base
 | committed  |
 | ...        | <-- sp
@@ -428,9 +428,9 @@ On Windows, a gstack is allocated as:
 | ...        |
 .            .
 .            .
-|------------| <-- limit (8MiB by default)
+|------------| <-- limit 
 | xxxxxxxxxx | 
-|------------|
+|------------| <-- 8MiB by default
 ```
 The guard page at the end of the committed area will
 move down into the reserved area to commit further stack pages on-demand. 
@@ -450,7 +450,7 @@ OS has no overcommit), the layout is:
 | committed  |
 | ...        | <-- sp
 |------------|
-| reserved   | (committed on-demand)
+| reserved   | (committed on demand)
 |            |
 .            .
 .            .
