@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
   mp_config_t config = { };
   //config.gpool_enable = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
+  //config.stack_initial_commit = 64 * 1024L;   // use when debugging with lldb on macOS
   mp_init(&config);
 
   size_t start_rss = 0;
@@ -38,7 +39,7 @@ int main(int argc, char** argv) {
   countern_run();
   mstate_run();
 
-  // C++ (these fail in msvc if running without gpool's (due to the stack limit check))
+  // C++ 
   exn_run();
   multi_unwind_run();
   throw_run();
@@ -46,11 +47,9 @@ int main(int argc, char** argv) {
   // multi-shot tests
   amb_run();
   amb_state_run();
-  nqueens_run();
-  throw_run();  
+  nqueens_run();  
 
-
-  // mprompt tests
+  // low-level mprompt tests
   //mp_async_test1M();  // async workers
   //mp_test1()
   //mp_test2();
