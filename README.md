@@ -35,7 +35,7 @@ Particular aspects:
 - The multi-prompt abstraction has a precise [semantics] and is well-typed. This
   also means there is always just one logical active stack (as a chain of
   gstacks). This allows exceptions to propagate naturally and also provides
-  natural [backtraces] for any resumed prompt (todo).
+  natural [backtraces] for any resumed prompt.
 
 - A drawback of this approach is that it requires 64-bit systems in order to have enough
   virtual address space. Moreover, at miminum 4KiB of memory is committed per 
@@ -109,11 +109,11 @@ Some known issues are:
 - `lldb` on macOS is unable to continue after a demand-page `SEGV`
   due to a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868).
   A workaround is to set the gstack initial commit high enough to avoid 
-  demand paging during debugging.
+  demand paging during debugging (use `config.stack_initial_commit=64*1024L;` for [example](test/main.c)).
 
-- On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably
-  (and currently on Windows _gpools_ always need to be used). Backtraces only span
-  over prompts if the parent prompt happens to be at a higher address.
+- On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably. 
+  Backtraces in Visual Studio only span over prompts if the parent prompt happens 
+  to be at a higher address.
 
 
 ## Libmprompt
@@ -396,7 +396,7 @@ Here a breakpoint was set in code that was resumed
 where the backtrace continues into the main stack. This is quite nice
 for debugging compared to callback based programming for example.
 
-(Unfortunately, full backtraces are not yet working on Windows with MSVC).
+(Unfortunately, full backtraces are not yet working on Windows with Visual Studio).
 
 
 ## The libmphandler Interface
