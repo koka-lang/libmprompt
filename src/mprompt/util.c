@@ -64,6 +64,34 @@ static void mp_show_error_message(const char* fmt, va_list args) {
   mp_vfprintf( mp_output_handler, "libmprompt: error: ", fmt, args);
 }
 
+#if defined(_WIN32)
+#include <windows.h>
+static void mp_show_system_error_message(const char* fmt, va_list args) {
+  DWORD err = GetLastError();
+  mp_vfprintf(mp_output_handler, "libmprompt: error: ", fmt, args);
+  if (err != ERROR_SUCCESS) {
+    char buf[256];
+    snprintf(buf, sizeof(buf) - 1, "0x%xd: ", err);
+    size_t len = strlen(buf);
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL, err, 0, buf+len, (DWORD)(sizeof(buf) - len - 1), NULL);
+    strcat_s(buf, "\n");
+    mp_fputs(mp_output_handler, "            code : ", buf);
+  }
+}
+#else
+#include <string.h>
+static void mp_show_system_error_message(const char* fmt, va_list args) {
+  int err = errno;
+  mp_vfprintf(mp_output_handler, "libmprompt: error: ", fmt, args);
+  if (err != 0) {
+    char buf[256];
+    snprintf(buf, sizeof(buf) - 1, "%d: %s\n", err, strerror(err));
+    mp_fputs(mp_output_handler, "            code : ", buf);
+  }
+}
+#endif
+
+
 void mp_trace_message(const char* fmt, ...) {
 #ifdef NDEBUG
   MP_UNUSED(fmt);
@@ -79,7 +107,22 @@ void mp_error_message(int err, const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
   //fprintf(stderr, "errno: %s\n", strerror(err));
-  //mp_show_error_message(fmt, args);
+  mp_show_error_message(fmt, args);
+  va_end(args);
+  // and call the error handler which may abort (or return normally)
+  if (mp_error_handler != NULL) {
+    mp_error_handler(err, mp_error_arg);
+  }
+  // default handler
+  else if (err == EFAULT) {
+    abort();
+  }
+}
+
+void mp_system_error_message(int err, const char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  mp_show_system_error_message(fmt, args);
   va_end(args);
   // and call the error handler which may abort (or return normally)
   if (mp_error_handler != NULL) {

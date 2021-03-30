@@ -58,7 +58,7 @@ static uint8_t* mp_os_mmap_reserve(size_t size, int prot, bool* zeroed) {
   #endif
   uint8_t* p = (uint8_t*)mmap(NULL, size, prot, flags, fd, 0);
   if (p == MAP_FAILED) {
-    mp_error_message(ENOMEM, "failed to allocate mmap memory of size %uz (error %d)\n", size, errno);
+    mp_system_error_message(ENOMEM, "failed to allocate mmap memory of size %zu\n", size);
     return NULL;
   }
   return p;
@@ -74,14 +74,14 @@ static void  mp_os_mem_free(uint8_t* p, ssize_t size) {
   MP_UNUSED(size);
   if (p == NULL) return;
   if (munmap(p,size) != 0) {
-    mp_error_message(ENOMEM, "failed to free memory at %p of size %uz (error %d)\n", p, size, errno);
+    mp_system_error_message(ENOMEM, "failed to free memory at %p of size %zu\n", p, size);
   }
 }
 
 // Commit a range of pages
 static bool mp_os_mem_commit(uint8_t* start, ssize_t size) {
   if (mprotect(start, size, PROT_READ | PROT_WRITE) != 0) {   
-    mp_error_message(ENOMEM, "failed to commit memory at %p of size %uz (error %d)\n", start, size, errno);
+    mp_system_error_message(ENOMEM, "failed to commit memory at %p of size %zu\n", start, size);
     return false;
   }
   return true;
@@ -161,7 +161,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
       err = madvise(stk, reset_size, MADV_DONTNEED);
     }
     if (err != 0) {
-      mp_error_message(EINVAL, "failed to reset memory at %p of size %uz (error %d)\n", stk, reset_size, errno);
+      mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zu\n", stk, reset_size);
     }
     return (err == 0);
   } 
@@ -178,7 +178,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
       int err = mprotect(stk, reset_size, PROT_NONE);
     #endif
     if (err != 0) {
-      mp_error_message(EINVAL, "failed to decommit memory at %p of size %uz (error %d)\n", stk, reset_size, errno);      
+      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zu\n", stk, reset_size);      
     }
     return (err == 0);
   }
@@ -289,7 +289,7 @@ static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* a
     }    
   }
   else if (res == 0) {
-    mp_error_message(EFAULT,"stack overflow at %p\n", info->si_addr);
+    mp_fatal_message(EFAULT,"stack overflow at %p\n", info->si_addr); // abort
   }
   
   // otherwise call the previous handler
@@ -356,7 +356,7 @@ static void mp_gpools_thread_init(void) {
         }
       }
       if (mp_sig_stack == NULL) {
-        mp_error_message(ENOMEM, "unable to set alternate signal stack (error %i)\n", errno);
+        mp_system_error_message(EINVAL, "unable to set alternate signal stack\n");
       }     
     }
   }
@@ -397,7 +397,7 @@ static void mp_gpools_process_init(void) {
     }
     #endif
     if (err != 0) {
-      mp_error_message(errno, "unable to install signal handler (error %d)\n", errno);
+      mp_system_error_message(EINVAL, "unable to install signal handler\n");
     }
     // mp_trace_message("signal handler installed\n");
   }

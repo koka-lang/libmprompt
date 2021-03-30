@@ -17,15 +17,16 @@
 // -----------------------------------------------------
 
 static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* available, uint8_t** base);
-static bool  mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_initial);
-static void  mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit);
-static DWORD mp_win_get_error(void);
+static bool     mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_initial);
+static void     mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit);
+
+static const char* mp_system_error_message(int errno, const char* fmt, ...);
 
 // Reserve memory
 static uint8_t* mp_os_mem_reserve(ssize_t size) {
   uint8_t* p = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
   if (p == NULL) {
-    mp_error_message(ENOMEM, "failed to reserve memory of size %uz (code 0x%xu)\n", size, mp_win_get_error());
+    mp_system_error_message(ENOMEM, "failed to reserve memory of size %uz\n", size);
   }
   return p;
 }
@@ -35,14 +36,14 @@ static void  mp_os_mem_free(uint8_t* p, ssize_t size) {
   MP_UNUSED(size);
   if (p == NULL) return;
   if (!VirtualFree(p, 0, MEM_RELEASE)) {
-    mp_error_message(ENOMEM, "failed to free memory as %p of size %uz (code 0x%xu)\n", p, size, mp_win_get_error());
+    mp_system_error_message(ENOMEM, "failed to free memory as %p of size %uz\n", p, size);
   }
 }
 
 // Commit a range of pages
 static bool mp_os_mem_commit(uint8_t* start, ssize_t size) {
   if (VirtualAlloc(start, size, MEM_COMMIT, PAGE_READWRITE) == NULL) {   
-    mp_error_message(ENOMEM, "failed to commit memory at %p of size %uz (error %d)\n", start, size, errno);
+    mp_system_error_message(ENOMEM, "failed to commit memory at %p of size %uz\n", start, size);
     return false;
   }
   return true;
@@ -101,7 +102,7 @@ static bool mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_in
   uint8_t* guard_start;
   mp_push(commit_base, guard_size, &guard_start);
   if (VirtualAlloc(guard_start, guard_size, MEM_COMMIT, PAGE_GUARD | PAGE_READWRITE) == NULL) {
-    mp_error_message(ENOMEM, "failed to set guard page at %p of size %zu (code 0x%xu)\n", guard_start, guard_size, mp_win_get_error());
+    mp_system_error_message(ENOMEM, "failed to set guard page at %p of size %zu\n", guard_start, guard_size);
     return false;
   }       
   return true;
@@ -131,7 +132,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     // todo: is this the current call ok since it includes a mix of committed and decommitted pages?
     //       we should perhaps only reset the committed range.
     if (VirtualAlloc(stk, reset_size, MEM_RESET, PAGE_NOACCESS /* ignored */) == NULL) {
-      mp_error_message(EINVAL, "failed to reset memory at %p of size %uz (code 0x%xu)\n", stk, reset_size, mp_win_get_error());
+      mp_system_error_message(EINVAL, "failed to reset memory at %p of size %uz\n", stk, reset_size);
       return false;
     }
     return true;
@@ -141,7 +142,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     // note: this will recommit on demand and gives zero'd pages which may be expensive.
     #pragma warning(suppress:6250) // warning: MEM_DECOMMIT does not free the memory
     if (!VirtualFree(stk, reset_size, MEM_DECOMMIT)) {
-      mp_error_message(EINVAL, "failed to decommit memory at %p of size %uz (code 0x%xu)\n", stk, reset_size, mp_win_get_error());
+      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %uz\n", stk, reset_size);
       return false;
     }
     // .. and reinitialize guard
@@ -194,7 +195,7 @@ static bool mp_gstack_os_init(void) {
   // stack space during exception unwinding on a gstack.
   PVOID handler = AddVectoredExceptionHandler(1, &mp_gstack_win_page_fault);
   if (handler == NULL) {
-    mp_error_message(EINVAL, "unable to install page fault handler (code %xu) -- fall back to guarded demand paging\n", mp_win_get_error());
+    mp_system_error_message(EINVAL, "unable to install page fault handler -- fall back to guarded demand paging\n");
     os_use_gpools = false; // fall back to regular demand paging 
   }
   
@@ -349,19 +350,6 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
 // -----------------------------------------------------
 // Util
 // -----------------------------------------------------
-
-static DWORD mp_win_get_error(void) {
-  DWORD err = GetLastError();
-  #ifndef NDEBUG
-  if (err != ERROR_SUCCESS) {
-    char buf[256];
-    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL, err, 0, buf, 255, NULL);
-    mp_trace_message("windows error %u: %s", err, buf);
-  }
-  #endif
-  return err;
-}
-
 
 static void mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit) {
   uint8_t* base_glimit = NULL;
