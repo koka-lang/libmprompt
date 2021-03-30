@@ -1,5 +1,6 @@
 # libmprompt
 
+
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
 Latest release: v0.1, 2021-03-25.
 
@@ -80,7 +81,7 @@ Todos:
 
 We use `cmake` to build:
 
-```
+```ioke
 > mkdir out/debug    # or out/release
 > cd out/debug
 > cmake ../..
@@ -159,39 +160,39 @@ The semantics of delimited multi-prompt control
 can be described precisely:
 
 Syntax:
-```
-e ::= v              # value
-   |  e1 e2          # application
-   |  yield m f      # yield to a prompt identified by marker `m`
-   |  prompt v       # start a new prompt (passing its marker to `v`)
-   |  @prompt m e    # internal: a prompt frame identified by marker `m`
+```ioke
+e ::= v              ; value
+   |  e1 e2          ; application
+   |  yield m f      ; yield to a prompt identified by marker `m`
+   |  prompt v       ; start a new prompt (passing its marker to `v`)
+   |  @prompt m e    ; internal: a prompt frame identified by marker `m`
 
-v ::= \x. e          # function with parameter `x` (lambda expression)
+v ::= \x. e          ; function with parameter `x` (lambda expression)
    |  ...
 ```
 
 Evaluation context:
-```   
-E ::= []            # hole
-   |  E e           # evaluate function first
-   |  v E           # and then the argument 
-   |  @prompt m E   # we can evaluate under a prompt frame
+```ioke
+E ::= []            ; hole
+   |  E e           ; evaluate function first
+   |  v E           ; and then the argument 
+   |  @prompt m E   ; we can evaluate under a prompt frame
 ```
 An evaluation context essentially describes the stack+registers where the hole is the current instruction pointer.
 
 Operational semantics:
-```
+```ioke
               e ----> e'
 (STEP)    -----------------
           E[e] |----> E[e']    
 ```
 
 We can now keep evaluating inside an expression context using small step transitions:
-```
-(APP)      (\x. e) v                ---->  e[x := v]                # beta-rule, application
-(NEWP)     prompt v                 ---->  @prompt m (v m)          # install a new prompt with a fresh marker `m`
-(PROMPT)   @prompt m v              ---->  v                        # returning a result discards the prompt frame
-(YIELD)    @prompt m E[yield m f]   ---->  f (\x. @prompt m E[x])   # yield to prompt frame `m`, capturing context `E`
+```ioke
+(APP)      (\x. e) v                ---->  e[x := v]                ; beta-rule, application
+(NEWP)     prompt v                 ---->  @prompt m (v m)          ; install a new prompt with a fresh marker `m`
+(PROMPT)   @prompt m v              ---->  v                        ; returning a result discards the prompt frame
+(YIELD)    @prompt m E[yield m f]   ---->  f (\x. @prompt m E[x])   ; yield to prompt frame `m`, capturing context `E`
 ```
 
 Note how in (YIELD) we yield with a function `f` to a prompt `m`. This
@@ -207,7 +208,7 @@ represented directly by a `mp_prompt_t*`).
 These primitives are very expressive but can still be strongly
 typed in simply typed lambda calculus and are thus sound and
 composable:
-```
+```haskell
 prompt :: (Marker a -> a) -> a               
 yield  :: Marker a -> ((b -> a) -> a) -> b   
 ```
@@ -236,7 +237,7 @@ see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Lei
 
 Each prompt starts a growable stacklet and executes from there.
 For example, we can have:
-```
+```ioke
 (stacklet 1)            (stacklet 2)            (stacklet 3)
 
 |-------------|
@@ -253,17 +254,17 @@ For example, we can have:
                         .             .         | @prompt C  |
                         .             .         |------------|
                         .             .         | 1+         |
-                                                | yield B f  |<< 
+                                                | yield B f  |<<<
                                                 .            .
                                                 .            .
 ```   
-where `<<` is the currently executing statement.
+where `<<<` is the currently executing statement.
 
 The `yield B f` can yield directly to prompt `B` by
 just switching stacks. The resumption `r` is also
 just captured as a pointer and execution continues
 with `f(r)`: (rule (YIELD) with `r` = `\x. @prompt B(... @prompt C. 1+[])[x]`)
-```
+```ioke
 (stacklet 1)            (stacklet 2)            (stacklet 3)
 
 |-------------|
@@ -272,7 +273,7 @@ with `f(r)`: (rule (YIELD) with `r` = `\x. @prompt B(... @prompt C. 1+[])[x]`)
 |             |
 | ...         |         (suspended)
 | resume_t* r ~~~~~~~~> |-------------|
-| f(r)        |<<       | @prompt B   | 
+| f(r)        |<<<      | @prompt B   | 
 .             .         |-------------|
 .             .         |             |
 .             .         | ...         |         
@@ -288,7 +289,7 @@ with `f(r)`: (rule (YIELD) with `r` = `\x. @prompt B(... @prompt C. 1+[])[x]`)
 Later we may want to resume the resumption `r` again with
 the result `42`: (`r(42)`)
 
-```
+```ioke
 (stacklet 1)            (stacklet 2)            (stacklet 3)
 
 |-------------|
@@ -299,7 +300,7 @@ the result `42`: (`r(42)`)
 | resume_t* r ~~~~~~~~> |-------------|
 |             |         | @prompt B   | 
 | ...         |         |-------------|
-| resume(r,42)|<<       |             |
+| resume(r,42)|<<<      |             |
 .             .         | ...         |         
 .             .         | prompt <------------> |------------|
 .             .         .             .         | @prompt C  |
@@ -317,7 +318,7 @@ and their addresses stay valid (in their lexical scope).
 
 Again, we can just switch stacks to resume at the original
 yield location: 
-```
+```ioke
 (stacklet 1)            (stacklet 2)            (stacklet 3)
 
 |-------------|
@@ -334,14 +335,14 @@ yield location:
 .             .         .             .         | @prompt C  |
                         .             .         |------------|
                         .             .         | 1+         |
-                                                | 42         |<<
+                                                | 42         |<<<
                                                 .            .
                                                 .            .
 ```
 
 Suppose, stacklet 3 now returns normally with a result 43:
 
-```
+```ioke
 (stacklet 1)            (stacklet 2)            (stacklet 3)
 
 |-------------|
@@ -357,7 +358,7 @@ Suppose, stacklet 3 now returns normally with a result 43:
 .             .         | prompt <------------> |------------|
 .             .         .             .         | @prompt C  |
                         .             .         |------------|
-                        .             .         | 43         |<<
+                        .             .         | 43         |<<<
                                                 .            .
                                                 .            .
 ```
@@ -365,7 +366,7 @@ Suppose, stacklet 3 now returns normally with a result 43:
 Then the stacklets can unwind like a regular stack (this is
 also how exceptions are propagated):  (rule (PROMPT))
 
-```
+```ioke
 (stacklet 1)            (stacklet 2)            (stacklet 3)
 
 |-------------|
@@ -378,7 +379,7 @@ also how exceptions are propagated):  (rule (PROMPT))
 | ...         |    |    |-------------|
 | resume <---------+    |             |   
 |             |         | ...         |         
-.             .         | 43          |<<       (cached for reuse)
+.             .         | 43          |<<<      (cached to reuse)
 .             .         .             .         |------------|
                         .             .         |            |
                         .             .         |            |                                                
