@@ -74,14 +74,14 @@ static void  mp_os_mem_free(uint8_t* p, ssize_t size) {
   MP_UNUSED(size);
   if (p == NULL) return;
   if (munmap(p,size) != 0) {
-    mp_system_error_message(ENOMEM, "failed to free memory at %p of size %zu\n", p, size);
+    mp_system_error_message(ENOMEM, "failed to free memory at %p of size %zd\n", p, size);
   }
 }
 
 // Commit a range of pages
 static bool mp_os_mem_commit(uint8_t* start, ssize_t size) {
   if (mprotect(start, size, PROT_READ | PROT_WRITE) != 0) {   
-    mp_system_error_message(ENOMEM, "failed to commit memory at %p of size %zu\n", start, size);
+    mp_system_error_message(ENOMEM, "failed to commit memory at %p of size %zd\n", start, size);
     return false;
   }
   return true;
@@ -161,7 +161,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
       err = madvise(stk, reset_size, MADV_DONTNEED);
     }
     if (err != 0) {
-      mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zu\n", stk, reset_size);
+      mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", stk, reset_size);
     }
     return (err == 0);
   } 
@@ -178,7 +178,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
       int err = mprotect(stk, reset_size, PROT_NONE);
     #endif
     if (err != 0) {
-      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zu\n", stk, reset_size);      
+      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, reset_size);      
     }
     return (err == 0);
   }

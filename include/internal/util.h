@@ -65,7 +65,7 @@ typedef void (mp_error_fun)(int err, void* arg);
 
 void mp_trace_message(const char* fmt, ...);
 void mp_system_error_message(int err, const char* fmt, ...);  // if err == EFAULT, abort
-//void mp_error_message(int err, const char* fmt, ...);         // if err == EFAULT, abort
+void mp_error_message(int err, const char* fmt, ...);         // if err == EFAULT, abort
 
 mp_decl_noreturn void  mp_fatal_message(int err, const char* fmt, ...);  // prints message and aborts
 mp_decl_noreturn void  mp_unreachable(const char* msg);

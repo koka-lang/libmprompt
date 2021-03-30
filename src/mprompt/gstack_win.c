@@ -26,7 +26,7 @@ static const char* mp_system_error_message(int errno, const char* fmt, ...);
 static uint8_t* mp_os_mem_reserve(ssize_t size) {
   uint8_t* p = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
   if (p == NULL) {
-    mp_system_error_message(ENOMEM, "failed to reserve memory of size %uz\n", size);
+    mp_system_error_message(ENOMEM, "failed to reserve memory of size %zd\n", size);
   }
   return p;
 }
@@ -36,14 +36,14 @@ static void  mp_os_mem_free(uint8_t* p, ssize_t size) {
   MP_UNUSED(size);
   if (p == NULL) return;
   if (!VirtualFree(p, 0, MEM_RELEASE)) {
-    mp_system_error_message(ENOMEM, "failed to free memory as %p of size %uz\n", p, size);
+    mp_system_error_message(ENOMEM, "failed to free memory as %p of size %zd\n", p, size);
   }
 }
 
 // Commit a range of pages
 static bool mp_os_mem_commit(uint8_t* start, ssize_t size) {
   if (VirtualAlloc(start, size, MEM_COMMIT, PAGE_READWRITE) == NULL) {   
-    mp_system_error_message(ENOMEM, "failed to commit memory at %p of size %uz\n", start, size);
+    mp_system_error_message(ENOMEM, "failed to commit memory at %p of size %zd\n", start, size);
     return false;
   }
   return true;
@@ -98,11 +98,11 @@ static bool mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_in
   // the actual guard pages is determined by the Windows thread stack guarantee.
   ULONG guaranteed = 0;
   SetThreadStackGuarantee(&guaranteed);
-  size_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
+  ssize_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
   uint8_t* guard_start;
   mp_push(commit_base, guard_size, &guard_start);
   if (VirtualAlloc(guard_start, guard_size, MEM_COMMIT, PAGE_GUARD | PAGE_READWRITE) == NULL) {
-    mp_system_error_message(ENOMEM, "failed to set guard page at %p of size %zu\n", guard_start, guard_size);
+    mp_system_error_message(ENOMEM, "failed to set guard page at %p of size %zd\n", guard_start, guard_size);
     return false;
   }       
   return true;
@@ -132,7 +132,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     // todo: is this the current call ok since it includes a mix of committed and decommitted pages?
     //       we should perhaps only reset the committed range.
     if (VirtualAlloc(stk, reset_size, MEM_RESET, PAGE_NOACCESS /* ignored */) == NULL) {
-      mp_system_error_message(EINVAL, "failed to reset memory at %p of size %uz\n", stk, reset_size);
+      mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", stk, reset_size);
       return false;
     }
     return true;
@@ -142,7 +142,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     // note: this will recommit on demand and gives zero'd pages which may be expensive.
     #pragma warning(suppress:6250) // warning: MEM_DECOMMIT does not free the memory
     if (!VirtualFree(stk, reset_size, MEM_DECOMMIT)) {
-      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %uz\n", stk, reset_size);
+      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, reset_size);
       return false;
     }
     // .. and reinitialize guard
@@ -370,7 +370,7 @@ static void mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit) {
   uint8_t* end = base + os_gstack_gap;
   mp_trace_message("full : %p, end : %p\n", full, end);
   mp_trace_message("limit: %p, base: %p\n", xbase_limit, base);
-  if (base_glimit != NULL) { mp_trace_message("guard: %p, guaranteed: %zi\n", base_glimit, guaranteed); }
+  if (base_glimit != NULL) { mp_trace_message("guard: %p, guaranteed: %zd\n", base_glimit, guaranteed); }
   for (uint8_t* p = full; p < end; ) {
     MEMORY_BASIC_INFORMATION info;
     VirtualQuery(p, &info, sizeof(info));
