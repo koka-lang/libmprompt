@@ -409,6 +409,89 @@ also how exceptions are propagated):  (rule (RETURN))
 See [`mprompt.c`](src/mprompt/mprompt.c) for the implementation of this.
 
 
+### Low-level layout of gstacks
+
+#### Windows
+
+On Windows, a gstack is allocated as:
+
+```ioke
+|------------|
+| xxxxxxxxxx | <-- no-access gap
+|------------| <-- base
+| committed  |
+| ...        | <-- sp
+|------------|
+| guard page |
+|------------|
+| reserved   | (committed on demand)
+| ...        |
+.            .
+.            .
+|------------| <-- limit (8MiB by default)
+| xxxxxxxxxx | 
+|------------|
+```
+The guard page at the end of the committed area will
+move down into the reserved area to commit further stack pages on-demand. 
+
+If enabling gpools ([`config.gpool_enable`](test/main.c#L28)), the layout of the stack is the same but there are two differences: (1) the stacks will grow more aggressive doubling the committed area every time (up to 1MiB) which can help performance, and (2), the stack memory is reused in the process which can be more efficient than allocating from the OS from scratch (which needs to re-zero pages for example).
+
+#### Linux and macOS
+
+On `mmap` based systems the layout depends whether gpools
+are enabled. If gpools are enabled (which is automatic of the
+OS has no overcommit), the layout is:
+
+```ioke
+|------------|
+| xxxxxxxxxx |
+|------------| <-- base
+| committed  |
+| ...        | <-- sp
+|------------|
+| reserved   | (committed on-demand)
+|            |
+.            .
+.            .
+|------------| <-- limit
+| xxxxxxxxxx |
+|------------|
+```
+
+The `reserved` space is committed on-demand using a signal
+handler where the gpool allows the handler to determine
+reliably whether a stack can be grown safely (up to the `limit`). 
+(As described earlier, this also allows a stack in a gpool to 
+grow through doubling which can be more performant, as well as 
+allow better reuse of allocated stack memory.)
+
+If the OS has overcommit (and gpools are not enabled explicitly),
+the gstack is allocated instead as fully committed from the start
+(with read/write access):
+
+
+```ioke
+|------------|
+| xxxxxxxxxx |
+|------------| <-- base
+| committed  |
+| ...        | <-- sp
+|            |
+|            |
+.            .
+.            .
+|------------| <-- limit
+| xxxxxxxxxx |
+|------------|
+```
+
+This is simpler than gpools, as no signal handler is required.
+However it will count 8MiB for each stack against the commit count,
+even though the actual physical pages are only committed on-demand
+by the OS. This can lead to trouble if the [overcommit limit](https://www.kernel.org/doc/Documentation/vm/overcommit-accounting) is set too low.
+
+
 ## Backtraces
 
 A nice property of muli-prompts is that there is always
