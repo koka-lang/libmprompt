@@ -38,6 +38,7 @@ int main(int argc, char** argv) {
   counter_run();
   countern_run();
   mstate_run();
+  rehandle_run();
 
   // C++ 
   exn_run();

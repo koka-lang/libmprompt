@@ -276,7 +276,7 @@ typedef void* mpe_voidp_t;
 
 
 /// Identity; used to aid macros.
-#define mpe_voidp_voidp(v)     (v)
+#define mpe_voidp_mpe_voidp_t(v)     (v)
 
 /// Convert an #mpe_voidp_t back to an `int`.
 #define mpe_int_voidp(v)       ((int)((intptr_t)(v)))

@@ -20,7 +20,7 @@ MPE_DEFINE_OP0(reader, ask, long)
 // Tail optimized reader 
 static void* handle_reader_ask(mpe_resume_t* r, void* local, void* arg) {
   UNUSED(arg);
-  return mpe_resume_tail(r, local, mpe_voidp_long(42));
+  return mpe_resume_tail(r, local, local);
 }
  
 void* reader_handle(mpe_actionfun_t action, long init, void* arg) {

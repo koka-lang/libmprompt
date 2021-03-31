@@ -19,6 +19,7 @@
     <ClCompile Include="..\..\test\test-countern.c" />
     <ClCompile Include="..\..\test\test-exn.cpp" />
     <ClCompile Include="..\..\test\test-multi-unwind.cpp" />
+    <ClCompile Include="..\..\test\test-rehandle.c" />
     <ClCompile Include="..\..\test\test-throw.cpp" />
     <ClCompile Include="..\..\test\test-mstate.c" />
     <ClCompile Include="..\..\test\test-nqueens.c" />

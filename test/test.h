@@ -34,6 +34,7 @@ void mstate_run(void);
 void nqueens_run(void);
 void amb_run(void);
 void amb_state_run(void);
+void rehandle_run(void);
 
 
 #ifdef __cplusplus

@@ -50,6 +50,9 @@
     <ClCompile Include="..\..\test\test-multi-unwind.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\test\test-rehandle.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\test\test.h">
