@@ -125,8 +125,8 @@ mp_longjmp:
 mp_stack_enter:
   and     sp, x0, #~31          /* switch to the new stack (aligned down to 32 bytes) */
   sub     sp, sp, #32           /* sp = sp - 32 */
-  stp     x29, x30, [sp, #16]   /* sp[24] = x30, sp[16] = lr */
-  str     x3, [sp, #8]          /* sp[8] = x3 */
+  stp     x29, x30, [sp, #16]   /* mimic call on new stack: sp[24] = x30, sp[16] = lr */
+  str     x3, [sp, #8]          /* save jmpbuf_t** on the stack for (future) unwinding: sp[8] = x3 */
   add     x29, sp, #16          /* set our frame pointer to sp[16] */
   
   mov     x0, x5                /* argument to x0 */
@@ -136,6 +136,6 @@ mp_stack_enter:
   /* should never get here */
   bl      abort
 
-  ldr     x0, [sp, #8]
+  ldr     x0, [sp, #8]          /* load jmpbuf_t* and longjmp back */
   ldr     x0, [x0]
   b       mp_longjmp

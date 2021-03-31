@@ -70,10 +70,10 @@ struct mp_jmpbuf_s {
   mp_xmm_t  reg_xmm13;
   mp_xmm_t  reg_xmm14;
   mp_xmm_t  reg_xmm15;
-  void*     tib_stack_base;
-  void*     tib_stack_limit;
-  void*     tib_stack_dealloc;
-  void*     tib_fiber_data;
+  void*     tib_stack_base;        /* TIB+8    */
+  void*     tib_stack_limit;       /* TIB+16   */
+  void*     tib_stack_real_limit;  /* TIB+5240 */
+  void*     tib_fiber_data;        /* TIB+32   */
   uint32_t  reg_mxcrs;
   uint16_t  reg_fpcr;
   uint16_t  context_padding;
