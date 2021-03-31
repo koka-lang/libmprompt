@@ -6,39 +6,41 @@ Latest release: v0.2, 2021-03-29.
 
 A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
-The implementation is based on _in-place_ growable light-weight stacklets (called `gstack`s) which use 
-virtual memory to enable growing the stacklet (up to 8MiB) but start out using 
-just 4KiB of committed memory. This means that this library is only available 
+The implementation is based on _in-place_ growable light-weight gstacks (called `gstack`s) which use 
+virtual memory to enable growing the gstack (up to 8MiB) but start out using 
+just 4KiB of committed memory. The library is only available 
 for 64-bit systems (currently Windows, Linux, macOS, and various BSD's) 
 as smaller systems do not have enough virtual address space.
 
 There are two libraries provided:
 
-- `libmprompt`: the primitive library that provides a minimal interface for
+- `libmprompt`: the primitive library that provides 
   multi-prompt control. This has well-defined semantics and is the
   minimal control abstraction that can be typed with simple types.
   `libmpromptx` is the C++ compiled variant that integrates exception handling
-  where exceptions are propagated correctly through the stacklets.
+  where exceptions are propagated correctly through the gstacks.
 
 - `libmphandler`: a small example library that uses `libmprompt` to implement
   efficient algebraic effect handlers in C (with a similar interface as [libhandler]).
 
-Particular aspects:
+Particular aspects:n
 
 - The goal is to be fully compatible with C/C++ semantics and to be able to
   link to this library and use the multi-prompt abstraction _as is_ without special
   considerations for signals, stack addresses, unwinding etc. 
   In particular, this library has _address stability_: using the in-place 
   growable gstacks (through virtual memory), these stacks are never moved, which ensures 
-  addresses to the stack are always valid (in their lexical scope). There is
-  also no special function prologue/epilogue needed as with [split stacks][split].
+  addresses to the stack are always valid (in their lexical scope) -- to the C program
+  it still looks as if there is just one large stack. There is
+  also no special function prologue/epilogue needed as with [split stacks][split]
+  for example.
   
-- The multi-prompt abstraction has a precise [semantics] and is well-typed. This
-  also means there is always just one logical active stack (as a chain of
-  gstacks). This allows exceptions to propagate naturally and also provides
+- The multi-prompt abstraction has a precise [semantics] and is well-typed. 
+  Moreover, it guarantees there is always just one logical active stack (as a chain of
+  gstacks) which allows exceptions to propagate naturally and also provides
   natural [backtraces] for any resumed prompt.
 
-- A drawback of this approach is that it requires 64-bit systems in order to have enough
+- A drawback of our implementation is that it requires 64-bit systems in order to have enough
   virtual address space. Moreover, at miminum 4KiB of memory is committed per 
   (active) prompt. On systems without "overcommit" we use internal _gpools_ to 
   still be able to commit stack space on-demand using a special signal handler. 
@@ -241,9 +243,9 @@ of type `b` to resume back to the yield point. Such simple types cannot be
 given for example to any of `shift`/`reset`, `call/cc`, fibers, or |co-routines, 
 which is one aspect why we believe multi-prompt delimited control is preferable.
 
-The growable stacklets are used to make capturing- and resuming
+The growable gstacks are used to make capturing- and resuming
 evaluation contexts efficient. Each `@prompt m` frame sits
-on the top a stacklet from which it can yield and resume 
+on the top a gstack from which it can yield and resume 
 in constant time. This can for example be used to create
 green thread scheduling, exceptions, iterators, async-await, etc.
 
@@ -254,7 +256,7 @@ see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Lei
 
 ### An implementation based on in-place growable stacks
 
-Each prompt starts a growable stacklet and executes from there.
+Each prompt starts a growable gstack and executes from there.
 For example, we can have:
 ```ioke
 (gstack 1)              (gstack 2)              (gstack 3)
@@ -282,7 +284,7 @@ where `<<<` is the currently executing statement.
 The `yield B f` can yield directly to prompt `B` by
 just switching stacks. The resumption `r` is also
 just captured as a pointer and execution continues
-with `f(r)`: (rule (YIELD) with `r` = `\x. @prompt B(... @prompt C. 1+[])[x]`)
+with `f(r)`: (rule `(YIELD)` with `r` = `\x. @prompt B(... @prompt C. 1+[])[x]`)
 ```ioke
 (gstack 1)              (gstack 2)              (gstack 3)
 
@@ -328,11 +330,11 @@ the result `42`: (`r(42)`)
                                                 | []         |
                                                 .            .
 ```   
-Note how we grew the stacklet 1 without moving stacklet 2 and 3.
+Note how we grew the gstack 1 without moving gstack 2 and 3.
 If we have just one stack, an implementation needs to copy 
 and restore fragments of the stack (which is what [libhandler] does),
 but that leads to trouble in C and C++ where stack addresses can temporarily become invalid.
-With the in-place growable stacklets, objects on the stack are never moved
+With the in-place growable gstacks, objects on the stack are never moved
 and their addresses stay valid (in their lexical scope).
 
 Again, we can just switch stacks to resume at the original
@@ -359,7 +361,7 @@ yield location:
                                                 .            .
 ```
 
-Suppose, stacklet 3 now returns normally with a result 43:
+Suppose, gstack 3 now returns normally with a result 43:
 
 ```ioke
 (gstack 1)              (gstack 2)              (gstack 3)
@@ -382,8 +384,8 @@ Suppose, stacklet 3 now returns normally with a result 43:
                                                 .            .
 ```
 
-Then the stacklets can unwind like a regular stack (this is
-also how exceptions are propagated):  (rule (RETURN))
+Then the gstacks can unwind like a regular stack (this is
+also how exceptions are propagated):  (rule `(RETURN)`)
 
 ```ioke
 (gstack 1)              (gstack 2)              (gstack 3)
@@ -487,17 +489,23 @@ the gstack is allocated instead as fully committed from the start
 ```
 
 This is simpler than gpools, as no signal handler is required.
-However it will count 8MiB for each stack against the commit count,
+However it will count 8MiB for each stack against the virtual commit count,
 even though the actual physical pages are only committed on-demand
-by the OS. This can lead to trouble if the [overcommit limit](https://www.kernel.org/doc/Documentation/vm/overcommit-accounting) is set too low.
+by the OS. This may lead to trouble if 
+the [overcommit limit](https://www.kernel.org/doc/Documentation/vm/overcommit-accounting) 
+is set too low.
 
 
 ## Backtraces
 
 A nice property of muli-prompts is that there is always
 a single strand of execution, together with suspended prompts.
-The list of prompts form the logical stack and we can have 
-natural propagation of exceptions with proper backtraces.
+In contrast to lower level abstractions, like fibers, there is no 
+arbitrary switching between stacks: one can only yield up to a
+parent prompt (capturing all gstacks up to that prompt) or 
+resume a suspended prompt chain (and restoring all gstacks in that context).
+As a consequence, the active chain of prompts always form a logical stack 
+and we can have natural propagation of exceptions with proper backtraces.
 
 Here is an example of a backtrace on Linux:
 
