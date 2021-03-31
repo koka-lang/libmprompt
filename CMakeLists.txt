@@ -29,6 +29,7 @@ set(test_sources
     test/test-amb.c
     test/test-amb-state.c
     test/test-nqueens.c
+    test/test-rehandle.c
     test/main.c)    
 
 set(mp_cflags)
