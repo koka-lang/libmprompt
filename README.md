@@ -509,7 +509,7 @@ and we can have natural propagation of exceptions with proper backtraces.
 
 Here is an example of a backtrace on Linux:
 
-![backtrace](doc/backtrace2.jpg)
+<img src="doc/backtrace2.jpg" width=600px>
 
 Here a breakpoint was set in code that was resumed
 where the backtrace continues into the main stack. This is quite nice
