@@ -120,7 +120,6 @@ mp_longjmp:                  /* rdi: jmp_buf */
 #define DW_REG_rbx                3
 #define DW_REG_rbp                6
 #define DW_REG_rsp                7
-#define DW_REG_r15                15
 
 /* .cfi_sections .debug_frame  */
 
@@ -128,15 +127,15 @@ _mp_stack_enter:
 mp_stack_enter:  
   .cfi_startproc 
   .cfi_remember_state
-  .cfi_signal_frame           /* needed or else gdb does not allow swithing frames to a lower address */
+  .cfi_signal_frame           /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
 
   /* save rcx on the stack so it is always available during unwinding */
   pushq    %rcx
   .cfi_adjust_cfa_offset 8
   .cfi_rel_offset rcx, 0
   
-  /* Set the cfa to point to our return jmpbuf_t (instead of into the stack); 
-     The previous registers can now be restored (during unwind) using .cfi_offset directives */
+  /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 
+     the previous registers can now be restored (during unwind) using .cfi_offset directives */
   .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (0(%rsp)) */  
   .cfi_offset rip, 0
   .cfi_offset rbx, 8  
