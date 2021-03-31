@@ -125,29 +125,18 @@ mp_longjmp:                  /* rdi: jmp_buf */
 /* .cfi_sections .debug_frame  */
 
 _mp_stack_enter:
-mp_stack_enter:
-  movq    (%rsp), %rax        /* rip */
-  
-  /* switch stack */
-  andq    $~0x0F, %rdi        /* align down to 16 bytes */
-  movq    %rdi, %rsp          /* and switch stack */
-  xorq    %rax, %rax
-  pushq   %rax                /* old rip */
-  jmp     mp_stack_entry      
-  
-  /* entry on a new stack */
-mp_stack_entry:
+mp_stack_enter:  
   .cfi_startproc 
-  .cfi_signal_frame           /* needed or else gdb does not allow swithing frames to a lower address */
-  
-  pushq   %rcx                /* push jmpbuf_t** for unwinding */  
-  .cfi_adjust_cfa_offset 8   
   .cfi_remember_state
+  .cfi_signal_frame           /* needed or else gdb does not allow swithing frames to a lower address */
+
+  /* save rcx on the stack so it is always available during unwinding */
+  pushq    %rcx
+  .cfi_adjust_cfa_offset 8
+  .cfi_rel_offset rcx, 0
   
   /* Set the cfa to point to our return jmpbuf_t (instead of into the stack); 
-     The previous registers can now be restored (during unwind) using .cfi_offset directives 
-     Todo: on macOS, this seems to trigger a bug in libunwind when running the program inside `lldb` on a `throw`
-  */
+     The previous registers can now be restored (during unwind) using .cfi_offset directives */
   .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = (0(%rsp)) */  
   .cfi_offset rip, 0
   .cfi_offset rbx, 8  
@@ -158,7 +147,16 @@ mp_stack_entry:
   .cfi_offset r14, 48
   .cfi_offset r15, 56
   .cfi_return_column rip
+
+  /* switch stack; push rip + rcx to mimic the old stack for the dwarf expression above */
+  movq    8(%rsp), %rax       /* old rip */  
+  andq    $~0x0F, %rdi        /* align down to 16 bytes */
+  subq    $16, %rdi
+  movq    %rax, 8(%rdi)       /* old rip */
+  movq    %rcx, 0(%rdi)       /* saved rcx (jmpbuf_t**) */
+  movq    %rdi, %rsp          /* and switch stack */
   
+  /* and call the entry function */
   movq    %r9, %rdi           /* pass the function argument */
   movq    %rsp, %rsi          
   callq   *%r8                /* and call the function */
@@ -170,55 +168,8 @@ mp_stack_entry:
   callq   abort
   #endif
 
-  .cfi_restore_state
   movq    %rsp, %rdi          /* load indirect jmpbuf_t* and longjmp */
   movq    (%rdi), %rdi
   jmp     mp_longjmp        
-  .cfi_endproc
-
-
-_mp_stack_enter_signal:
-mp_stack_enter_signal:
-  .cfi_startproc  
-  .cfi_signal_frame
-  movq    (%rsp), %r11        /* rip */
-  pushq   %rcx
-  
-  /* switch stack */
-  andq    $~0x0F, %rdi        /* align down to 16 bytes */
-  subq    $16, %rdi
-  movq    %rcx, (%rdi)
-  movq    %rdi, %rsp          /* and switch stack */  
-
-  /* unwind info: set cfa and rip from the current mp_jmpbuf_t return point 
-     todo: use .cfi_return_column?
-     todo: on macOS, this seems to trigger a bug when running in lldb on a throw
-     note: the expression calculates the _address_ that contains the new value of the target register.
-           the return jmpbuf_t* is: ((%rsp)) == DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref
-  */           
-  .cfi_remember_state
-  .cfi_escape DW_def_cfa_expression,     6, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref, DW_OP_plus_uconst, 16    /* rsp offset in jmpbuf */ 
-  /* .cfi_escape DW_expression, DW_REG_rsp, 6, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref, DW_OP_plus_uconst, 16 */
-  .cfi_escape DW_expression, DW_REG_rbp, 6, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref, DW_OP_plus_uconst, 24
-  .cfi_escape DW_expression, DW_REG_rip, 4, DW_OP_breg(DW_REG_rsp), 0, DW_OP_deref, DW_OP_deref /* rip is at offset 0 in the jmpbuf */
-  .cfi_return_column rip
-  
-  movq    %r9, %rdi           /* pass the function argument */
-  xorq    %rsi, %rsi          /* no trap frame */
-  callq   *%r8                /* and call the function */
-  
-  /* we should never get here (but the called function should longjmp, see `mprompt.c:mp_mprompt_stack_entry`) */
-  #ifdef __MACH__
-  callq   _abort
-  #else
-  callq   abort
-  #endif
-
   .cfi_restore_state
-  movq    (%rsp), %rdi        /* load jmpbuf_t* and longjmp */
-  movq    (%rdi), %rdi
-  jmp     mp_longjmp        
-
   .cfi_endproc
-
-

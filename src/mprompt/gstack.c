@@ -243,7 +243,7 @@ void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fu
     base_limit = base_commit_limit - os_page_size - mp_align_up(guaranteed, os_page_size);
   }
 #endif
-  mp_stack_enter(base_entry_sp, base_commit_limit, base_limit, return_jmp, fun, arg);
+  mp_stack_enter(base_entry_sp, base_commit_limit, base_limit, return_jmp, fun, arg);  
 }
 
 
