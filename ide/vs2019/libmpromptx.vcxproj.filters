@@ -52,6 +52,9 @@
     <ClCompile Include="..\..\src\mprompt\gstack_gpool.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\mprompt\frame.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="..\..\src\mprompt\asm\longjmp_amd64_win.asm">

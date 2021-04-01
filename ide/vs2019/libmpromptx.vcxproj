@@ -18,6 +18,7 @@
     <ClInclude Include="..\..\include\mprompt.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\src\mprompt\frame.c" />
     <ClCompile Include="..\..\src\mprompt\gstack.c" />
     <ClCompile Include="..\..\src\mprompt\gstack_gpool.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
