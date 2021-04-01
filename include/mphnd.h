@@ -34,7 +34,7 @@ typedef struct mph_resume_s  mph_resume_t;
 
 typedef void* (mph_start_fun_t)(mph_handler_t* h, void* arg);
 typedef void* (mph_yield_fun_t)(mph_resume_t* resume, void* local, void* arg);
-typedef void* (mph_unwind_fun_t)(void* local, void* arg);
+typedef void* (mph_unwind_fun_t)(void* local, void* arg1, void* arg2);
 
 typedef const char* mph_kind_t;      // user extensible
 
@@ -42,9 +42,10 @@ typedef const char* mph_kind_t;      // user extensible
 mp_decl_export void*          mph_prompt_handler(mph_kind_t kind, void* hdata, void* local, mph_start_fun_t* fun, void* arg);
 mp_decl_export mph_handler_t* mph_find(mph_kind_t kind);
 mp_decl_export void*          mph_yield_to(mph_handler_t* handler, mph_yield_fun_t fun, void* arg);
-mp_decl_export void           mph_unwind_to(mph_handler_t* handler, mph_unwind_fun_t fun, void* arg);
-mp_decl_export void           mph_abort_to(mph_handler_t* h, mph_unwind_fun_t fun, void* arg);
+mp_decl_export void           mph_unwind_to(mph_handler_t* handler, mph_unwind_fun_t fun, void* arg1, void* arg2);
+mp_decl_export void           mph_abort_to(mph_handler_t* h, mph_unwind_fun_t fun, void* arg1, void* arg2);
 
+// Handler data
 mp_decl_export mph_kind_t     mph_get_kind(mph_handler_t* handler);
 mp_decl_export void*          mph_get_data(mph_handler_t* handler);
 mp_decl_export void*          mph_get_local(mph_handler_t* handler);
@@ -54,7 +55,7 @@ mp_decl_export void**         mph_get_local_byref(mph_handler_t* handler);
 mp_decl_export void*          mph_resume(mph_resume_t* resume, void* local, void* arg);         // resume 
 mp_decl_export void*          mph_resume_tail(mph_resume_t* resume, void* local, void* arg);    // resume as the last action in a `mph_yield_fun_t`
 mp_decl_export void           mph_resume_drop(mph_resume_t* resume);                            // drop the resume object without resuming (but it will unwind if never resumed before)
-
+mp_decl_export void           mph_resume_unwind(mph_resume_t* resume);
 
 // Light weight linear handlers; cannot be yielded to (or unwound to)
 // The finally, under, and mask handlers are linear. Effect handlers that always tail-resume are linear as well.

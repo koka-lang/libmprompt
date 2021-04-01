@@ -16,6 +16,9 @@ set(mprompt_sources
     src/mprompt/gstack.c     # includes gstack-pool.c and gstack-win.c/gstack-mmap.c
     src/mprompt/mprompt.c)
 
+set(mphnd_sources
+    src/mphnd/mphnd.c)
+
 set(mpeff_sources
     src/mpeff/mpeff.c)
 
@@ -42,8 +45,9 @@ if (MP_USE_C)
   # C
   message(STATUS "Use the C compiler to compile (MP_USE_C=ON)")  
   set(mp_mprompt_name "mprompt")
+  set(mp_mphnd_name   "mphnd") 
   set(mp_mpeff_name   "mpeff") 
-
+  
   if(CMAKE_C_COMPILER_ID MATCHES "MSVC|Intel")
     message(WARNING "It is not recommended to use plain C with this compiler (due to SEH) (${CMAKE_C_COMPILER_ID})")
   endif() 
@@ -51,6 +55,7 @@ else()
   # C++
   message(STATUS "Use the C++ compiler to compile (${CMAKE_CXX_COMPILER_ID}) (MP_USE_C=OFF)")  
   set(mp_mprompt_name "mpromptx")
+  set(mp_mphnd_name   "mphndx") 
   set(mp_mpeff_name   "mpeffx")
     
   list(APPEND test_sources 
@@ -59,6 +64,7 @@ else()
               test/test-throw.cpp)
 
   SET_SOURCE_FILES_PROPERTIES(${mprompt_sources} PROPERTIES LANGUAGE CXX )
+  SET_SOURCE_FILES_PROPERTIES(${mphnd_sources} PROPERTIES LANGUAGE CXX )
   SET_SOURCE_FILES_PROPERTIES(${mpeff_sources} PROPERTIES LANGUAGE CXX )
   SET_SOURCE_FILES_PROPERTIES(${test_sources} PROPERTIES LANGUAGE CXX )
   
@@ -131,7 +137,7 @@ endif()
 
 
 message(STATUS "")
-message(STATUS "Libraries : lib${mp_mprompt_name}, lib${mp_mpeff_name}")
+message(STATUS "Libraries : lib${mp_mprompt_name}, lib${mp_mphnd_name}, lib${mp_mpeff_name}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 if(MP_USE_C)
   message(STATUS "Compiler  : ${CMAKE_C_COMPILER} ${mp_cflags}")
@@ -162,8 +168,17 @@ if (APPLE)
   # target_link_options(mprompt PUBLIC -Wl,-no_keep_dwarf_unwind)
 endif()
 
+
+add_library(mphnd STATIC ${mphnd_sources})
+set_target_properties(mphnd PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mphnd_name} )
+target_compile_definitions(mphnd PRIVATE MPE_STATIC_LIB)
+target_compile_options(mphnd PRIVATE ${mp_cflags})
+target_include_directories(mphnd PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${mp_install_dir}/include>
+)
+
 add_library(mpeff STATIC ${mpeff_sources})
-# set_property(TARGET mprompt PROPERTY POSITION_INDEPENDENT_CODE ON)
 set_target_properties(mpeff PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mpeff_name} )
 target_compile_definitions(mpeff PRIVATE MPE_STATIC_LIB)
 target_compile_options(mpeff PRIVATE ${mp_cflags})
@@ -175,7 +190,7 @@ target_include_directories(mpeff PUBLIC
 add_executable(mptest ${test_sources})
 target_compile_options(mptest PRIVATE ${mp_cflags})
 target_include_directories(mptest PRIVATE include)
-target_link_libraries(mptest PRIVATE mpeff mprompt)
+target_link_libraries(mptest PRIVATE mpeff mphnd mprompt)
 
 enable_testing()
 add_test(test_api, mptest)

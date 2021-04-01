@@ -204,11 +204,12 @@ class mph_unwind_exception : public std::exception {
 public:
   mph_handler_t* target;
   mph_unwind_fun_t* fun;
-  void* arg;
-  mph_unwind_exception(mph_handler_t* h, mph_unwind_fun_t* fun, void* arg) : target(h), fun(fun), arg(arg) {  }
-  mph_unwind_exception(const mph_unwind_exception& e) : target(e.target), fun(e.fun), arg(e.arg) { }
+  void* arg1;
+  void* arg2;
+  mph_unwind_exception(mph_handler_t* h, mph_unwind_fun_t* fun, void* arg1, void* arg2) : target(h), fun(fun), arg1(arg1), arg2(arg2) {  }
+  mph_unwind_exception(const mph_unwind_exception& e) : target(e.target), fun(e.fun), arg1(e.arg1), arg2(e.arg2) { }
   mph_unwind_exception& operator=(const mph_unwind_exception& e) {
-    target = e.target; fun = e.fun; arg = e.arg;
+    target = e.target; fun = e.fun; arg1 = e.arg1; arg2 = e.arg2;
     return *this;
   }
 
@@ -217,14 +218,14 @@ public:
   }
 };
 
-void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg) {
-  throw mph_unwind_exception(target, fun, arg);
+void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg1, void* arg2) {
+  throw mph_unwind_exception(target, fun, arg1, arg2);
 }
 #else
-void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg) {
+void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg1, void* arg2) {
   // TODO: walk the handlers and invoke finally frames
   // and finally yield up to abort
-  mph_abort_to(target, fun arg);
+  mph_abort_to(target, fun arg1, arg2);
 }
 #endif
 
@@ -267,7 +268,7 @@ static void* mph_start(mp_prompt_t* prompt, void* earg) {
     if (e.target != &h) {
       throw;  // rethrow 
     }
-    return e.fun(h.local,e.arg);  // execute the unwind function here while hdata is valid 
+    return (e.fun)(h.local, e.arg1, e.arg2);  // run here before dropping the prompt (unlike abort does)
   }
 #endif  
 }
@@ -302,9 +303,9 @@ static void* mph_yield_fun(mp_resume_t* r, void* envarg) {
 }
 
 
-static void* mph_unwind_fun(void* hdata, void* arg) {
-  (void)(hdata);
-  return arg;
+static void* mph_unwind_fun(void* local, void* arg1, void* arg2) {
+  (void)(local); (void)(arg2);
+  return arg1;
 }
 
 // Yield to a prompt without unwinding
@@ -327,7 +328,7 @@ static void* mph_yield_to_internal(bool once, mph_handler_t* h, mph_yield_fun_t 
   
   // unwind or return?
   if (mph_unlikely(renv->unwind)) {
-    mph_unwind_to(h, &mph_unwind_fun, renv->result);
+    mph_unwind_to(h, &mph_unwind_fun, renv->result, NULL);
     return NULL;
   }
   else {
@@ -355,20 +356,21 @@ void* mph_myield_to(mph_handler_t* h, mph_yield_fun_t fun, void* arg) {
 typedef struct mph_abort_env_s {
   void* local;
   mph_unwind_fun_t* fun;
-  void* arg;
+  void* arg1;
+  void* arg2;
 } mph_abort_env_t;
 
 static void* mph_abort_fun(mp_resume_t* r, void* envarg) {
   mph_abort_env_t yenv = *((mph_abort_env_t*)envarg); // copy as the drop can discard the memory
   mp_resume_drop(r);
-  return (yenv.fun)(yenv.local,yenv.arg);
+  return (yenv.fun)(yenv.local,yenv.arg1,yenv.arg2);
 }
 
 
 // Yield to a prompt without unwinding
-void mph_abort_to(mph_handler_t* h, mph_unwind_fun_t* fun, void* arg) {
+void mph_abort_to(mph_handler_t* h, mph_unwind_fun_t* fun, void* arg1, void* arg2) {
   mph_assert(mph_is_prompt_handler(h));
-  mph_abort_env_t env = { h->local, fun, arg };
+  mph_abort_env_t env = { h->local, fun, arg1, arg2 };
   mp_yield(h->prompt, &mph_abort_fun, &env);
 }
 

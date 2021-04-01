@@ -139,16 +139,16 @@ static void* mpe_perform_under(void* envarg) {
 
 
 // Never
-static void* mpe_perform_never(void* local, void* envarg) {
-  mpe_perform_env_t* env = (mpe_perform_env_t*)envarg;
-  return (env->opfun)(NULL, local, env->arg);
+static void* mpe_perform_never(void* local, void* funarg, void* arg) {
+  return ((mpe_opfun_t*)funarg)(NULL, local, arg);
 }
 
 
 // Scoped once
 static void* mpe_perform_op_scoped_once(mph_resume_t* r, void* local, void* envarg) {
   mpe_perform_env_t* env = (mpe_perform_env_t*)envarg;
-  mpe_resume_t resume = { MPE_RESUMPTION_SCOPED_ONCE }; // scoped so we can allocate on the stack
+  mpe_resume_t resume;
+  resume.rkind = MPE_RESUMPTION_SCOPED_ONCE; // scoped so we can allocate on the stack
   resume.mp.resume = r;
   return (env->opfun)(&resume, local, env->arg);
 }
@@ -212,13 +212,11 @@ static void* mpe_perform_at(mph_handler_t* mph, mpe_optag_t optag, void* arg) {
     return mpe_perform_yield_to(mph, op, arg);
   }
   else if (opkind == MPE_OP_NEVER) {
-    mpe_perform_env_t env = { op->opfun, arg };
-    mph_unwind_to(mph, &mpe_perform_never, &env);
+    mph_unwind_to(mph, &mpe_perform_never, (void*)(op->opfun), arg);
     return NULL; // never reached
   }
   else if (opkind == MPE_OP_ABORT) {
-    mpe_perform_env_t env = { op->opfun, arg };
-    mph_abort_to(mph, &mpe_perform_never, &env);
+    mph_abort_to(mph, &mpe_perform_never, (void*)(op->opfun), arg);
     return NULL;
   }
   else {
@@ -236,7 +234,6 @@ static mpe_decl_noinline void* mpe_unhandled_operation(mpe_optag_t optag) {
 
 // Perform finds the innermost handler and performs the operation
 void* mpe_perform(mpe_optag_t optag, void* arg) {
-  mpe_effect_t opeff = optag->effect;
   mph_handler_t* h = mph_find(mpe_effect_kind(optag->effect));
   if (mpe_unlikely(h == NULL)) return mpe_unhandled_operation(optag);  
   return mpe_perform_at(h, optag, arg);
@@ -281,7 +278,7 @@ void* mpe_handle(const mpe_handlerdef_t* hdef, void* local, mpe_actionfun_t* bod
   Resume
 -----------------------------------------------------------------*/
 
-static void* mpe_resume_internal(bool final, mpe_resume_t* resume, void* local, void* arg, bool unwind) {
+static void* mpe_resume_internal(bool final, mpe_resume_t* resume, void* local, void* arg) {
   mpe_assert(resume->rkind >= MPE_RESUMPTION_SCOPED_ONCE);
   // and resume
   if (resume->rkind == MPE_RESUMPTION_SCOPED_ONCE) {
@@ -308,19 +305,15 @@ static void* mpe_resume_internal(bool final, mpe_resume_t* resume, void* local, 
   }
 }
 
-// Resume to unwind (e.g. run destructors and finally clauses)
-static void mpe_resume_unwind(mpe_resume_t* r) {
-  mpe_resume_internal(true, r, NULL, NULL, true);
-}
 
 // Last use of a resumption
 void* mpe_resume_final(mpe_resume_t* resume, void* local, void* arg) {
-  return mpe_resume_internal(true, resume, local, arg, false);
+  return mpe_resume_internal(true, resume, local, arg);
 }
 
 // Regular resume
 void* mpe_resume(mpe_resume_t* resume, void* local, void* arg) {
-  return mpe_resume_internal(false, resume, local, arg, false);
+  return mpe_resume_internal(false, resume, local, arg);
 }
 
 // Last resume in tail-position
@@ -342,6 +335,23 @@ void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {
 }
 
 
+// Resume to unwind (e.g. run destructors and finally clauses)
+static void mpe_resume_unwind(mpe_resume_t* resume) {
+  mpe_assert(resume->rkind >= MPE_RESUMPTION_SCOPED_ONCE);
+  // and resume
+  if (resume->rkind == MPE_RESUMPTION_SCOPED_ONCE) {
+    mph_resume_t* mpr = resume->mp.resume;
+    return mph_resume_unwind(mpr);
+  }
+  else {
+    mph_resume_t* mpr = resume->mp.resume;
+    //mpe_trace_message("free resume: %p\n", resume);
+    mpe_free(resume);
+    return mph_resume_unwind(mpr);
+  }  
+}
+
+
 // Release without resuming 
 void mpe_resume_release(mpe_resume_t* resume) {
   if (resume == NULL) return; // in case someone tries to release a NULL (OP_NEVER or OP_ABORT) resumption
@@ -355,3 +365,6 @@ void mpe_resume_release(mpe_resume_t* resume) {
     mph_resume_drop(mpr); // will unwind if needed
   }
 }
+
+
+
