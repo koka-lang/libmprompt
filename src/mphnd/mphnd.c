@@ -381,8 +381,8 @@ void mph_abort_to(mph_handler_t* h, mph_unwind_fun_t* fun, void* arg1, void* arg
 //---------------------------------------------------------------------------
 
 // mph_resume_t* is always cast to mp_resume_t*
-struct mp_resume_s {
-  void* _abstract;
+struct mph_resume_s {
+  void* abstract;
 };
 
 void* mph_resume(mph_resume_t* resume, void* local, void* arg) {
