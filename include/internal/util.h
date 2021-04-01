@@ -43,6 +43,14 @@ typedef ptrdiff_t  ssize_t;
 #endif
 
 
+#if defined(__GNUC__) || defined(__clang__)
+#define mp_unlikely(x)          __builtin_expect((x),0)
+#define mp_likely(x)            __builtin_expect((x),1)
+#else
+#define mp_unlikely(x)          (x)
+#define mp_likely(x)            (x)
+#endif
+
 /*------------------------------------------------------------------------------
   Defines
 ------------------------------------------------------------------------------*/

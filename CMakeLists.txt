@@ -16,8 +16,8 @@ set(mprompt_sources
     src/mprompt/gstack.c     # includes gstack-pool.c and gstack-win.c/gstack-mmap.c
     src/mprompt/mprompt.c)
 
-set(mphandler_sources
-    src/mphandler/handler.c)
+set(mpeff_sources
+    src/mpeff/mpeff.c)
 
 set(test_sources
     test/util.c
@@ -41,8 +41,8 @@ set(mp_install_dir)
 if (MP_USE_C)
   # C
   message(STATUS "Use the C compiler to compile (MP_USE_C=ON)")  
-  set(mp_mprompt_name   "mprompt")
-  set(mp_mphandler_name "mphandler") 
+  set(mp_mprompt_name "mprompt")
+  set(mp_mpeff_name   "mpeff") 
 
   if(CMAKE_C_COMPILER_ID MATCHES "MSVC|Intel")
     message(WARNING "It is not recommended to use plain C with this compiler (due to SEH) (${CMAKE_C_COMPILER_ID})")
@@ -50,8 +50,8 @@ if (MP_USE_C)
 else()  
   # C++
   message(STATUS "Use the C++ compiler to compile (${CMAKE_CXX_COMPILER_ID}) (MP_USE_C=OFF)")  
-  set(mp_mprompt_name   "mpromptx")
-  set(mp_mphandler_name "mphandlerx")
+  set(mp_mprompt_name "mpromptx")
+  set(mp_mpeff_name   "mpeffx")
     
   list(APPEND test_sources 
               test/test-exn.cpp
@@ -59,7 +59,7 @@ else()
               test/test-throw.cpp)
 
   SET_SOURCE_FILES_PROPERTIES(${mprompt_sources} PROPERTIES LANGUAGE CXX )
-  SET_SOURCE_FILES_PROPERTIES(${mphandler_sources} PROPERTIES LANGUAGE CXX )
+  SET_SOURCE_FILES_PROPERTIES(${mpeff_sources} PROPERTIES LANGUAGE CXX )
   SET_SOURCE_FILES_PROPERTIES(${test_sources} PROPERTIES LANGUAGE CXX )
   
   if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
@@ -131,7 +131,7 @@ endif()
 
 
 message(STATUS "")
-message(STATUS "Libraries : lib${mp_mprompt_name}, lib${mp_mphandler_name}")
+message(STATUS "Libraries : lib${mp_mprompt_name}, lib${mp_mpeff_name}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 if(MP_USE_C)
   message(STATUS "Compiler  : ${CMAKE_C_COMPILER} ${mp_cflags}")
@@ -162,12 +162,12 @@ if (APPLE)
   # target_link_options(mprompt PUBLIC -Wl,-no_keep_dwarf_unwind)
 endif()
 
-add_library(mphandler STATIC ${mphandler_sources})
+add_library(mpeff STATIC ${mpeff_sources})
 # set_property(TARGET mprompt PROPERTY POSITION_INDEPENDENT_CODE ON)
-set_target_properties(mphandler PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mphandler_name} )
-target_compile_definitions(mphandler PRIVATE MPE_STATIC_LIB)
-target_compile_options(mphandler PRIVATE ${mp_cflags})
-target_include_directories(mphandler PUBLIC
+set_target_properties(mpeff PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mpeff_name} )
+target_compile_definitions(mpeff PRIVATE MPE_STATIC_LIB)
+target_compile_options(mpeff PRIVATE ${mp_cflags})
+target_include_directories(mpeff PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${mp_install_dir}/include>
 )
@@ -175,7 +175,7 @@ target_include_directories(mphandler PUBLIC
 add_executable(mptest ${test_sources})
 target_compile_options(mptest PRIVATE ${mp_cflags})
 target_include_directories(mptest PRIVATE include)
-target_link_libraries(mptest PRIVATE mphandler mprompt)
+target_link_libraries(mptest PRIVATE mpeff mprompt)
 
 enable_testing()
 add_test(test_api, mptest)

@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 #include <mprompt.h>
-#include <mphandler.h>
+#include <mpeff.h>
 #include "test.h"
 
 #if defined(__GNUC__)

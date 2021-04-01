@@ -15,7 +15,7 @@
 #include <assert.h>
 
 #include <mprompt.h>
-#include "mphandler.h"
+#include "mpeff.h"
 
 
 /*-----------------------------------------------------------------
@@ -121,8 +121,7 @@ struct mpe_resume_s {
   mpe_resumption_kind_t kind;       // todo: encode kind in lower bits so we can avoid allocating resumes?
   union {
     void**        plocal;           // kind == MPE_RESUMPTION_INPLACE
-    mp_resume_t*  resume_once;      // kind == MPE_RESUMPTION_SCOPED_ONCE || MPE_RESUMPTION_ONCE
-    mp_mresume_t* resume_multi;     // kind == MPE_RESUMPTION_MULTI
+    mp_resume_t*  resume;           // kind == MPE_RESUMPTION_SCOPED_ONCE || MPE_RESUMPTION_ONCE || MPE_RESUME_MULTI
   } mp;
 };
 
@@ -247,7 +246,7 @@ static void* mpe_perform_op_clause(mp_resume_t* mpr, void* earg) {
   mpe_perform_env_t* env = (mpe_perform_env_t*)earg;
   mpe_resume_t* resume = mpe_malloc_tp(mpe_resume_t);
   resume->kind = MPE_RESUMPTION_ONCE;
-  resume->mp.resume_once = mpr;
+  resume->mp.resume = mpr;
   return (env->opfun)(resume, env->local, env->oparg);
 }
 
@@ -268,12 +267,12 @@ static void* mpe_perform_yield_to(mpe_frame_handle_t* h, const mpe_operation_t* 
 }
 
 // Multi-shot resumption
-static void* mpe_perform_op_clause_multi(mp_mresume_t* mpr, void* earg) {
+static void* mpe_perform_op_clause_multi(mp_resume_t* mpr, void* earg) {
   mpe_perform_env_t* env = (mpe_perform_env_t*)earg;
   mpe_resume_t* resume = mpe_malloc_tp(mpe_resume_t);
   //mpe_trace_message("alloc resume: %p\n", resume);
   resume->kind = MPE_RESUMPTION_MULTI;
-  resume->mp.resume_multi = mpr;
+  resume->mp.resume = mpr;
   return (env->opfun)(resume, env->local, env->oparg);  
 }
 
@@ -298,7 +297,7 @@ static void* mpe_perform_op_clause_scoped_once(mp_resume_t* mpr, void* earg) {
   mpe_perform_env_t* env = (mpe_perform_env_t*)earg;
   mpe_resume_t resume;
   resume.kind = MPE_RESUMPTION_SCOPED_ONCE;
-  resume.mp.resume_once = mpr;
+  resume.mp.resume = mpr;
   return (env->opfun)(&resume, env->local, env->oparg);
 }
 
@@ -476,26 +475,26 @@ static void* mpe_resume_internal(bool final, mpe_resume_t* resume, void* local, 
   mpe_resume_env_t renv = { local, arg, unwind };
   // and resume
   if (resume->kind == MPE_RESUMPTION_SCOPED_ONCE) {
-    mp_resume_t* mpr = resume->mp.resume_once;
+    mp_resume_t* mpr = resume->mp.resume;
     return mp_resume(mpr, &renv);
   }
   else if (resume->kind == MPE_RESUMPTION_ONCE) {
-    mp_resume_t* mpr = resume->mp.resume_once;
+    mp_resume_t* mpr = resume->mp.resume;
     mpe_assert_internal(final);
     //mpe_trace_message("free resume: %p\n", resume);
     mpe_free(resume);
     return mp_resume(mpr, &renv);
   }
   else {
-    mp_mresume_t* mpr = resume->mp.resume_multi;
+    mp_resume_t* mpr = resume->mp.resume;
     if (final) {
       //mpe_trace_message("free resume: %p\n", resume);
       mpe_free(resume);
     }
     else {
-      mp_mresume_dup(mpr); 
+      mp_resume_dup(mpr); 
     }
-    return mp_mresume(mpr, &renv);
+    return mp_resume(mpr, &renv);
   }
 }
 
@@ -523,18 +522,13 @@ void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {
   mpe_resume_env_t renv = { local, arg, false };
   // and tail resume
   if (resume->kind == MPE_RESUMPTION_SCOPED_ONCE) {
-    mp_resume_t* mpr = resume->mp.resume_once;
-    return mp_resume_tail(mpr, &renv);
-  }
-  else if (resume->kind == MPE_RESUMPTION_ONCE) {
-    mp_resume_t* mpr = resume->mp.resume_once;
-    mpe_free(resume); // always assume final?
+    mp_resume_t* mpr = resume->mp.resume;
     return mp_resume_tail(mpr, &renv);
   }
   else {
-    mp_mresume_t* mpr = resume->mp.resume_multi;    
+    mp_resume_t* mpr = resume->mp.resume;    
     mpe_free(resume); // always assume final?
-    return mp_mresume_tail(mpr, &renv);
+    return mp_resume_tail(mpr, &renv);
   }
 }
 
@@ -543,22 +537,17 @@ void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {
 void mpe_resume_release(mpe_resume_t* resume) {
   if (resume == NULL) return; // in case someone tries to release a NULL (OP_NEVER or OP_ABORT) resumption
   if (resume->kind == MPE_RESUMPTION_ONCE) {
-    mpe_resume_unwind(resume);
-    /*
-    mp_resume_t* mpr = resume->mp.resume_once;
-    mpe_free(resume);         // always assume final?
-    mp_resume_drop(mpr);
-    */
+    mpe_resume_unwind(resume);    
   }
   else {
     mpe_assert_internal(resume->kind == MPE_RESUMPTION_MULTI);
-    mp_mresume_t* mpr = resume->mp.resume_multi;
-    if (mp_mresume_should_unwind(mpr)) {
+    mp_resume_t* mpr = resume->mp.resume;
+    if (mp_resume_should_unwind(mpr)) {
       mpe_resume_unwind(resume);
     }
     else {
       mpe_free(resume);
-      mp_mresume_drop(mpr);
+      mp_resume_drop(mpr);
     }
   }
 }

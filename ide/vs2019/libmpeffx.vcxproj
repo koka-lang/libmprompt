@@ -11,10 +11,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\include\mphandler.h" />
+    <ClInclude Include="..\..\include\mpeff.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\src\mphandler\handler.c" />
+    <ClCompile Include="..\..\src\mpeff\effecth.c" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="libmpromptx.vcxproj">
@@ -25,9 +25,9 @@
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{CC1B47E9-02CF-4840-867B-73E5A9620D13}</ProjectGuid>
-    <RootNamespace>libmphandlerx</RootNamespace>
+    <RootNamespace>libmpeffx</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>libmphandlerx</ProjectName>
+    <ProjectName>libmpeffx</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">

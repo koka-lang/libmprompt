@@ -42,7 +42,7 @@ typedef struct mp_resume_point_s {   // allocated on the suspended stack (which 
 typedef struct mp_return_point_s {   // allocated on the parent stack (which performed an enter/resume)
   mp_jmpbuf_t      jmp;     // must be the first field (see `mp_stack_enter`)
   mp_return_kind_t kind;    
-  void*            fun;     // if yielding, the function to execute
+  mp_yield_fun_t*  fun;     // if yielding, the function to execute
   void*            arg;     // if yielding, the argument to the function; if returning, the result.
   #ifdef __cplusplus
   std::exception_ptr exn;   // returning with an exception to propagate
@@ -73,10 +73,9 @@ struct mp_prompt_s {
 };
 
 
-// A resumption can only be used at most once. 
-// This allows for allocation free yield and resume
+// Abstract type of resumptions (never used as such)
 struct mp_resume_s {
-  mp_prompt_t p;
+  void* abstract;
 };
 
 // If resuming multiple times, the original stack is saved in a corresponding chain of prompt_save structures.
@@ -89,13 +88,40 @@ typedef struct mp_prompt_save_s {
 
 // A general resumption that can be resumed multiple times; needs a small allocation and is reference counted.
 // Only copies the original stack if it is actually being resumed more than once.
-struct mp_mresume_s {
+typedef struct mp_mresume_s {
   intptr_t           refcount;
   long               resume_count;       // count number of resumes.
   mp_prompt_t*       prompt;
   mp_prompt_save_t*  save;
   mp_return_point_t* tail_return_point;  // need to save this as the one in the prompt may be overwritten by earlier resumes
-};
+} mp_mresume_t;
+
+
+
+// We use bit 2 in the pointers (assuming 8-byte minimal alignment) to distinguish resume-at-most-once from multi-shot resume
+// This way we do not need allocation of at-most-once resumptions while having a consistent interface.
+
+// Is this a once resumption (returns NULL if not)
+static mp_prompt_t* mp_resume_is_once(mp_resume_t* r) {
+  intptr_t i = (intptr_t)r;
+  return ((i & 4) == 0 ? (mp_prompt_t*)r : NULL);
+}
+
+// Is this a multi-shot resumption (returns NULL if not)
+static mp_mresume_t* mp_resume_is_multi(mp_resume_t* r) {
+  intptr_t i = (intptr_t)r;
+  return ((i & 4) == 0 ? NULL : (mp_mresume_t*)(i ^ 4));
+}
+
+// Create a non-allocated at-most-once resumption
+static mp_resume_t* mp_resume_once(mp_prompt_t* p) {
+  return (mp_resume_t*)p;
+}
+
+// Create a multi shot resumption
+static mp_resume_t* mp_resume_multi(mp_mresume_t* r) {
+  return (mp_resume_t*)(((intptr_t)r) | 4);
+}
 
 
 
@@ -251,7 +277,7 @@ static  void mp_prompt_stack_entry(void* penv, void* trap_frame) {
 static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, mp_prompt_t* p) {
   mp_assert_internal(!mp_prompt_is_active(p));
   if (ret->kind == MP_YIELD_ONCE) {
-    return ((mp_yield_fun_t*)ret->fun)((mp_resume_t*)p, ret->arg);
+    return (ret->fun)(mp_resume_once(p), ret->arg);
   }
   else if (ret->kind == MP_RETURN) {
     void* result = ret->arg;
@@ -265,7 +291,7 @@ static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, m
     r->resume_count = 0;
     r->save = NULL;
     r->tail_return_point = p->return_point;
-    return ((mp_myield_fun_t*)ret->fun)(r, ret->arg);    
+    return (ret->fun)(mp_resume_multi(r), ret->arg);    
   }
   else {
     #ifdef __cplusplus
@@ -326,9 +352,17 @@ void* mp_prompt(mp_start_fun_t* fun, void* arg) {
 // Resume from a yield (once)
 //-----------------------------------------------------------------------
 
-// Resume (once)
+// Forwards for multi-shot resumptions
+static void* mp_mresume(mp_mresume_t* r, void* arg);
+static void* mp_mresume_tail(mp_mresume_t* r, void* arg);
+static void  mp_mresume_drop(mp_mresume_t* r);
+static mp_mresume_t* mp_mresume_dup(mp_mresume_t* r);
+
+
+// Resume 
 void* mp_resume(mp_resume_t* resume, void* arg) {
-  mp_prompt_t* p = &resume->p;
+  mp_prompt_t* p = mp_resume_is_once(resume);
+  if (mp_unlikely(p == NULL)) return mp_mresume(mp_resume_is_multi(resume), arg);
   mp_assert_internal(p->refcount == 1);
   mp_assert_internal(p->resume_point != NULL);
   return mp_prompt_resume(p, arg);  // resume back to yield point
@@ -338,7 +372,7 @@ void* mp_resume(mp_resume_t* resume, void* arg) {
 // Uses longjmp back to the `return_jump` as if it is yielding; this
 // makes the tail-recursion use no stack as they keep getting back (P)
 // and then into the exec_yield_fun function.
-static void* mp_resume_tail_to(mp_prompt_t* p, void* arg, mp_return_point_t* ret) {
+static void* mp_prompt_resume_tail(mp_prompt_t* p, void* arg, mp_return_point_t* ret) {
   mp_assert_internal(p->refcount == 1);
   mp_assert_internal(!mp_prompt_is_active(p));
   mp_assert_internal(p->resume_point != NULL);
@@ -347,15 +381,41 @@ static void* mp_resume_tail_to(mp_prompt_t* p, void* arg, mp_return_point_t* ret
   mp_longjmp(&res->jmp);
 }
 
+
 // Resume in tail position (last and only resume in scope)
 void* mp_resume_tail(mp_resume_t* resume, void* arg) {
-  mp_prompt_t* p = &resume->p;
-  return mp_resume_tail_to(p, arg, p->return_point);  // reuse return-point of the original entry
+  mp_prompt_t* p = mp_resume_is_once(resume);
+  if (mp_unlikely(p == NULL)) return mp_mresume_tail(mp_resume_is_multi(resume), arg);
+  return mp_prompt_resume_tail(p, arg, p->return_point);  // reuse return-point of the original entry
 }
 
 void mp_resume_drop(mp_resume_t* resume) {
-  mp_prompt_t* p = &resume->p;
+  mp_prompt_t* p = mp_resume_is_once(resume);
+  if (mp_unlikely(p == NULL)) return mp_mresume_drop(mp_resume_is_multi(resume));
   mp_prompt_drop(p);
+}
+
+mp_resume_t* mp_resume_dup(mp_resume_t* resume) {
+  mp_mresume_t* r = mp_resume_is_multi(resume);
+  if (mp_unlikely(r == NULL)) {
+    mp_error_message(EINVAL, "cannot dup once-resumptions; use 'mp_myield' instead.\n");    
+    return NULL;
+  }
+  else {
+    mp_mresume_dup(r);
+    return resume;
+  }
+}
+
+
+long mp_resume_resume_count(mp_resume_t* resume) {
+  mp_mresume_t* r = mp_resume_is_multi(resume);
+  return (r == NULL ? 0 : r->resume_count);
+}
+
+int mp_resume_should_unwind(mp_resume_t* resume) {
+  mp_mresume_t* r = mp_resume_is_multi(resume);
+  return (r != NULL && r->refcount == 1 && r->resume_count == 0);
 }
 
 
@@ -364,7 +424,7 @@ void mp_resume_drop(mp_resume_t* resume) {
 //-----------------------------------------------------------------------
 
 // Yield to a prompt with a certain resumption kind. Once yielded back up, execute `fun(arg)`
-static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, void* fun, void* arg) {
+static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
   mp_assert_internal(mp_prompt_is_active(p)); // can only yield to an active prompt
   mp_assert_internal(mp_prompt_is_ancestor(p));
   // set our resume point (Y)
@@ -387,12 +447,12 @@ static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, void* fun
 
 // Yield back to a prompt with a `mp_resume_once_t` resumption.
 void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
-  return mp_yield_internal(MP_YIELD_ONCE, p, (void*)fun, arg);
+  return mp_yield_internal(MP_YIELD_ONCE, p, fun, arg);
 }
 
 // Yield back to a prompt with a `mp_resume_t` resumption.
-void* mp_myield(mp_prompt_t* p, mp_myield_fun_t* fun, void* arg) {
-  return mp_yield_internal(MP_YIELD_MULTI, p, (void*)fun, arg);
+void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
+  return mp_yield_internal(MP_YIELD_MULTI, p, fun, arg);
 }
 
 
@@ -402,21 +462,14 @@ void* mp_myield(mp_prompt_t* p, mp_myield_fun_t* fun, void* arg) {
 //-----------------------------------------------------------------------
 
 // Increment the reference count of a resumption.
-mp_mresume_t* mp_mresume_dup(mp_mresume_t* r) {
+static mp_mresume_t* mp_mresume_dup(mp_mresume_t* r) {
   r->refcount++;  
   return r;
 }
 
-long mp_mresume_resume_count(mp_mresume_t* r) {
-  return r->resume_count;
-}
-
-int mp_mresume_should_unwind(mp_mresume_t* r) {  
-  return (r->refcount == 1 && r->resume_count == 0);
-}
 
 // Decrement the reference count of a resumption.
-void mp_mresume_drop(mp_mresume_t* r) {
+static void mp_mresume_drop(mp_mresume_t* r) {
   int64_t i = r->refcount--;
   if (i <= 1) {
     // free saved stacklets
@@ -482,8 +535,9 @@ static mp_prompt_t* mp_resume_get_prompt(mp_mresume_t* r) {
   return p;
 }
 
+
 // Resume with a regular resumption (and consumes `r` so dup if it needs to used later on)
-void* mp_mresume(mp_mresume_t* r, void* arg) {
+static void* mp_mresume(mp_mresume_t* r, void* arg) {
   r->resume_count++;
   mp_prompt_t* p = mp_resume_get_prompt(r);
   return mp_prompt_resume(p, arg);  // set a fresh prompt 
@@ -492,7 +546,7 @@ void* mp_mresume(mp_mresume_t* r, void* arg) {
 // Resume in tail position 
 // Note: this only works if all earlier resumes were in-scope -- which should hold
 // or otherwise the tail resumption wasn't in tail position anyways.
-void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
+static void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
   mp_return_point_t* ret = r->tail_return_point;
   if (ret == NULL) {
     return mp_mresume(r, arg);  // resume normally as the return_point may not be preserved correctly
@@ -501,7 +555,7 @@ void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
     r->tail_return_point = NULL;
     r->resume_count++;
     mp_prompt_t* p = mp_resume_get_prompt(r);
-    return mp_resume_tail_to(p, arg, ret);      // resume tail by reusing the original entry return point
+    return mp_prompt_resume_tail(p, arg, ret);      // resume tail by reusing the original entry return point
   }
 }
 
