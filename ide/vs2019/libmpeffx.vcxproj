@@ -14,12 +14,12 @@
     <ClInclude Include="..\..\include\mpeff.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\src\mpeff\effecth.c" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="libmpromptx.vcxproj">
       <Project>{aff5a4c1-5f72-47d4-92e7-92c052fc58c5}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\src\mpeff\mpeff.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
