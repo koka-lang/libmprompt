@@ -11,39 +11,23 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\include\internal\atomic.h" />
-    <ClInclude Include="..\..\include\internal\gstack.h" />
-    <ClInclude Include="..\..\include\internal\longjmp.h" />
-    <ClInclude Include="..\..\include\internal\util.h" />
-    <ClInclude Include="..\..\include\mprompt.h" />
+    <ClInclude Include="..\..\include\mphnd.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\src\mprompt\gstack.c" />
-    <ClCompile Include="..\..\src\mprompt\gstack_gpool.c">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="..\..\src\mprompt\gstack_mmap.c">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="..\..\src\mprompt\gstack_win.c">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
-    <ClCompile Include="..\..\src\mprompt\mprompt.c" />
-    <ClCompile Include="..\..\src\mprompt\util.c" />
+    <ClCompile Include="..\..\src\mphnd\mphnd.c" />
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="..\..\src\mprompt\asm\longjmp_amd64_win.asm" />
+    <ProjectReference Include="libmpromptx.vcxproj">
+      <Project>{aff5a4c1-5f72-47d4-92e7-92c052fc58c5}</Project>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{aff5a4c1-5f72-47d4-92e7-92c052fc58c5}</ProjectGuid>
-    <RootNamespace>libmpromptx</RootNamespace>
+    <ProjectGuid>{CC1B47E9-02CF-4840-867B-73E5A9620D14}</ProjectGuid>
+    <RootNamespace>libmphndx</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>libmpromptx</ProjectName>
+    <ProjectName>libmphndx</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -91,8 +75,6 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <CompileAs>CompileAsCpp</CompileAs>
       <ExceptionHandling>Async</ExceptionHandling>
-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <LanguageStandard>stdcpp14</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -104,17 +86,13 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>..\..\include;</AdditionalIncludeDirectories>
       <CompileAs>CompileAsCpp</CompileAs>
-      <WholeProgramOptimization>true</WholeProgramOptimization>
-      <Optimization>MaxSpeed</Optimization>
       <ExceptionHandling>Async</ExceptionHandling>
-      <LanguageStandard>Default</LanguageStandard>
-      <CallingConvention>Cdecl</CallingConvention>
     </ClCompile>
     <Link>
       <SubSystem>

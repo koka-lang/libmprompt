@@ -84,56 +84,6 @@ typedef struct mp_config_s {
 mp_decl_export void mp_init(mp_config_t* config);
 
 
-
-
-//---------------------------------------------------------------------------
-// Handler interface
-// A higher level abstraction on top of mprompt that maintains a stack
-// of handlers (so one can yield to a parent without needing a specific marker)
-// This also integrates unwinding and exception propagation.
-//---------------------------------------------------------------------------
-
-typedef struct mph_handler_s mph_handler_t;
-typedef struct mph_resume_s  mph_resume_t;
-
-typedef void* (mph_start_fun_t)(void* hdata, void* arg);
-typedef void* (mph_yield_fun_t)(mph_resume_t* resume, void* hdata, void* arg);
-typedef void* (mph_unwind_fun_t)(void* hdata, void* arg);
-
-typedef const char* mph_kind_t;      // user extensible
-
-mp_decl_export void*          mph_prompt_handler(mph_kind_t kind, size_t hdata_size, mph_start_fun_t* fun, void* arg);
-mp_decl_export mph_handler_t* mph_find(mph_kind_t kind);
-mp_decl_export void*          mph_yield_to(mph_handler_t* handler, mph_yield_fun_t fun, void* arg);
-mp_decl_export void*          mph_unwind_to(mph_handler_t* handler, mph_unwind_fun_t fun, void* arg);
-
-mp_decl_export mph_kind_t     mph_kind(mph_handler_t* handler);
-mp_decl_export void*          mph_data(mph_handler_t* handler);
-
-
-// Light weight linear handlers; cannot be yielded to (or unwound to)
-// the finally, under, and mask handlers are linear. Effect handlers that always tail-resume are linear as well.
-// todo: provide inline macros
-mp_decl_export void*          mph_linear_handler(mph_kind_t kind, void* hdata, mph_start_fun_t* fun, void* arg);
-mp_decl_export void*          mph_under(mph_kind_t under, void* (*fun)(void*), void* arg);
-mp_decl_export void*          mph_mask(mph_kind_t mask, int from);
-
-
-// low-level access
-mp_decl_export mph_handler_t* mph_top(void);
-mp_decl_export mph_handler_t* mph_parent(mph_handler_t* handler);
-
-extern mph_kind_t MPH_FINALLY;
-extern mph_kind_t MPH_UNDER;
-extern mph_kind_t MPH_MASK;
-
-
-// multi-shot
-//typedef void* (mp_handler_myield_fun_t)(mp_mresume_t* resume, mph_handler_t* handler, void* arg);
-//mp_decl_export void* mp_handler_myield_to(mph_handler_t* handler, mp_handler_myield_fun_t* fun, void* arg);
-
-
-
 //---------------------------------------------------------------------------
 // Low-level access  
 // (only `mp_mresume_should_unwind` is required by `libmphandler`)

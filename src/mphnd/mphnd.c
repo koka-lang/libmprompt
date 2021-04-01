@@ -1,17 +1,26 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
 #include <stdint.h>
-#include <errno.h>
+#include <assert.h>
 
-#include "mprompt.h"
-#include "internal/util.h"
+#include <mprompt.h>
+#include "mphnd.h"
 
 #ifdef __cplusplus
 #define MP_HAS_TRY  (1)
 #include <exception>
 #else
 #define MP_HAS_TRY  (0)
+#endif
+
+
+#if defined(_MSC_VER)
+#define mph_decl_noinline        __declspec(noinline)
+#define mph_decl_thread          __declspec(thread)
+#elif (defined(__GNUC__) && (__GNUC__>=3))  // includes clang and icc
+#define mph_decl_noinline        __attribute__((noinline))
+#define mph_decl_thread          __thread
+#else
+#define mph_decl_noinline
+#define mph_decl_thread          __thread  
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -21,6 +30,10 @@
 #define mph_unlikely(x)          (x)
 #define mph_likely(x)            (x)
 #endif
+
+#define mph_assert(x)            assert(x)
+#define mph_assert_internal(x)   mph_assert(x)
+
 
 //---------------------------------------------------------------------------
 // Builtin handler kinds
@@ -71,7 +84,7 @@ typedef struct mph_handler_mask_s {
 //---------------------------------------------------------------------------
 
 // Top of the handlers in the current execution stack
-mp_decl_thread mph_handler_t* _mph_top;
+mph_decl_thread mph_handler_t* _mph_top;
 
 mph_handler_t* mph_top(void) {
   return _mph_top;  
@@ -149,7 +162,7 @@ public:
     _mph_top = f;
   }
   ~mph_raii_with_handler_t() {
-    mp_assert_internal(_mph_top == f);
+    mph_assert_internal(_mph_top == f);
     _mph_top = f->parent;
   }
 };
@@ -201,9 +214,7 @@ public:
   mph_unwind_fun_t* fun;
   void* arg;
   mph_unwind_exception(mph_handler_prompt_t* h, mph_unwind_fun_t* fun, void* arg) : target(h), fun(fun), arg(arg) {  }
-  mph_unwind_exception(const mph_unwind_exception& e) : target(e.target), fun(e.fun), arg(e.arg) {
-    fprintf(stderr, "copy exception\n");
-  }
+  mph_unwind_exception(const mph_unwind_exception& e) : target(e.target), fun(e.fun), arg(e.arg) { }
   mph_unwind_exception& operator=(const mph_unwind_exception& e) {
     target = e.target; fun = e.fun; arg = e.arg;
     return *this;
@@ -291,29 +302,33 @@ static void* mph_yield_to(mph_handler_prompt_t* h, mph_yield_fun_t fun, void* ar
   return mp_yield(h->prompt, &mph_yield_fun, &env);
 }
 
-
-//---------------------------------------------------------------------------
-// Multi-shot Yield
-//---------------------------------------------------------------------------
-/*
-typedef struct mph_myield_env_s {
-  mph_handler_t* handler;
-  mph_yield_fun_t* fun;
-  void* arg;
-} mph_myield_env_t;
-
-static void* mph_myield_fun(mp_mresume_t* r, void* envarg) {
-  mph_myield_env_t* env = (mph_myield_env_t*)envarg;
-  return (env->fun)(r, env->handler, env->arg);
-}
-
-// Yield to a prompt without unwinding
+// Multi-shot Yield to a prompt without unwinding
 static void* mph_myield_to(mph_handler_prompt_t* h, mph_yield_fun_t fun, void* arg) {
-  mph_myield_env_t env = { &h->handler.handler, fun, arg };
-  return mp_myield(h->prompt, &mph_myield_fun, &env);
+  mph_yield_env_t env = { &h->handler.hdata, fun, arg };
+  return mp_myield(h->prompt, &mph_yield_fun, &env);
 }
-*/
 
+
+//---------------------------------------------------------------------------
+// Resuming
+//---------------------------------------------------------------------------
+
+// mph_resume_t* is always cast to mp_resume_t*
+struct mp_resume_s {
+  void* _abstract;
+};
+
+void* mph_resume(mph_resume_t* resume, void* arg) {
+  return mp_resume((mp_resume_t*)resume, arg);
+}
+
+void* mph_resume_tail(mph_resume_t* resume, void* arg) {
+  return mp_resume_tail((mp_resume_t*)resume, arg);
+}
+
+void mph_resume_drop(mph_resume_t* resume) {
+  mp_resume_drop((mp_resume_t*)resume);
+}
 
 
 //---------------------------------------------------------------------------
