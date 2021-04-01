@@ -51,9 +51,10 @@ mph_kind_t MPH_MASK    = "mph_mask";
 // Internal base handler
 typedef struct mph_handler_s {
   struct mph_handler_s*  parent;
-  mp_prompt_t*           prompt;   // NULL for linear handlers
+  mp_prompt_t*           prompt;   // NULL for (non-yieldable) linear handlers
   mph_kind_t             kind;
   void*                  hdata;
+  void*                  local;
 } mph_handler_t;
 
 
@@ -83,22 +84,28 @@ static bool mph_is_prompt_handler(mph_handler_t* h) {
 // Top of the handlers in the current execution stack
 mph_decl_thread mph_handler_t* _mph_top;
 
-mph_handler_t* mph_top(void) {
+mph_handler_t* mph_get_top(void) {
   return _mph_top;  
 }
 
-mph_handler_t* mph_parent(mph_handler_t* handler) {
-  return (mph_unlikely(handler == NULL) ? mph_top() : handler->parent);
+mph_handler_t* mph_get_parent(mph_handler_t* handler) {
+  return (mph_unlikely(handler == NULL) ? mph_get_top() : handler->parent);
 }
 
-mph_kind_t mph_kind(mph_handler_t* handler) {
+mph_kind_t mph_get_kind(mph_handler_t* handler) {
   return handler->kind;
 }
-void* mph_data(mph_handler_t* handler) {
+void* mph_get_data(mph_handler_t* handler) {
   return handler->hdata;
 }
 
+void* mph_get_local(mph_handler_t* handler) {
+  return handler->local;
+}
 
+void** mph_get_local_byref(mph_handler_t* handler) {
+  return &handler->local;
+}
 
 //---------------------------------------------------------------------------
 // Find innermost handler
@@ -171,34 +178,20 @@ public:
        _once = (_mph_top = (f)->parent, false) ) 
 #endif
 
-void* mph_linear_handler(mph_kind_t kind, void* hdata, mph_start_fun_t* fun, void* arg) {
+void* mph_linear_handler(mph_kind_t kind, void* hdata, void* local, mph_start_fun_t* fun, void* arg) {
   mph_handler_t h;
   h.kind = kind;
-  h.hdata = hdata;
   h.prompt = NULL;
+  h.hdata = hdata;
+  h.local = local;
   void* result = NULL;
   {mph_with_handler(&h){
-    result = fun(h.hdata,arg);
+    result = fun(&h,arg);
   }}
   return result;
 }
 
 
-
-//---------------------------------------------------------------------------
-// Abort
-//---------------------------------------------------------------------------
-
-static void* mph_abort_fun(mp_resume_t* r, void* arg) {
-  mp_resume_drop(r);
-  return arg;
-}
-
-// Yield to a prompt without unwinding
-static void* mph_abort_to(mph_handler_t* h, void* arg) {
-  mph_assert(mph_is_prompt_handler(h));
-  return mp_yield(h->prompt, &mph_abort_fun, arg);
-}
 
 
 
@@ -224,15 +217,14 @@ public:
   }
 };
 
-static void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg) {
+void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg) {
   throw mph_unwind_exception(target, fun, arg);
 }
 #else
-static void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg) {
+void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg) {
   // TODO: walk the handlers and invoke finally frames
-  // invoke the unwind function under an "under" frame
   // and finally yield up to abort
-  mph_abort_to(target, arg);
+  mph_abort_to(target, fun arg);
 }
 #endif
 
@@ -246,7 +238,8 @@ static void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* ar
 // Pass arguments down in a closure environment
 struct mph_start_env {
   mph_kind_t       kind;
-  size_t           hdata_size;
+  void*            hdata;
+  void*            local;
   mph_start_fun_t* body;
   void*            arg;
 };
@@ -255,17 +248,17 @@ struct mph_start_env {
 static void* mph_start(mp_prompt_t* prompt, void* earg) {
   // init
   struct mph_start_env* env = (struct mph_start_env*)earg;  
-  void* hdata = alloca(env->hdata_size);
   mph_handler_t h;
   h.kind = env->kind;
-  h.hdata = hdata;
   h.prompt = prompt;
+  h.hdata = env->hdata;
+  h.local = env->local;
 #if MP_HAS_TRY
   try {  // catch unwind exceptions
 #endif
     void* result = NULL;
     {mph_with_handler(&h) {
-      result = (env->body)(hdata,env->arg);
+      result = (env->body)(&h, env->arg);
     }}
     return result;
 #if MP_HAS_TRY
@@ -274,14 +267,14 @@ static void* mph_start(mp_prompt_t* prompt, void* earg) {
     if (e.target != &h) {
       throw;  // rethrow 
     }
-    return e.fun(hdata, e.arg);  // execute the unwind function here while hdata is valid 
+    return e.fun(h.local,e.arg);  // execute the unwind function here while hdata is valid 
   }
 #endif  
 }
 
 
-void* mph_prompt(mph_kind_t kind, size_t hdata_size, mph_start_fun_t* fun, void* arg) {
-  struct mph_start_env env = { kind, hdata_size, fun, arg };
+void* mph_prompt_handler(mph_kind_t kind, void* hdata, void* local, mph_start_fun_t* fun, void* arg) {
+  struct mph_start_env env = { kind, hdata, local, fun, arg };
   return mp_prompt(&mph_start, &env);
 }
 
@@ -291,12 +284,13 @@ void* mph_prompt(mph_kind_t kind, size_t hdata_size, mph_start_fun_t* fun, void*
 //---------------------------------------------------------------------------
 
 typedef struct mph_yield_env_s {
-  void*            hdata;
+  void*            local;
   mph_yield_fun_t* fun;
   void*            arg;
 } mph_yield_env_t;
 
 typedef struct mph_resume_env_s {
+  void* local;
   void* result;
   bool  unwind;
 } mph_resume_env_t;
@@ -304,7 +298,7 @@ typedef struct mph_resume_env_s {
 
 static void* mph_yield_fun(mp_resume_t* r, void* envarg) {
   mph_yield_env_t* env = (mph_yield_env_t*)envarg;
-  return (env->fun)((mph_resume_t*)r, env->hdata, env->arg);
+  return (env->fun)((mph_resume_t*)r, env->local, env->arg);
 }
 
 
@@ -322,21 +316,23 @@ static void* mph_yield_to_internal(bool once, mph_handler_t* h, mph_yield_fun_t 
   _mph_top = h->parent;                
 
   // yield
-  mph_yield_env_t yenv = { &h->hdata, fun, arg };
+  mph_yield_env_t yenv = { h->local, fun, arg };
   mph_resume_env_t* renv = (mph_resume_env_t*)
                            (mph_likely(once) ? mp_yield(h->prompt, &mph_yield_fun, &yenv) 
                                              : mp_myield(h->prompt, &mph_yield_fun, &yenv));
  
   // and relink handlers once resumed
+  h->parent = _mph_top;
   _mph_top = yield_top;
-  h->parent = _mph_top;                
-
+  
   // unwind or return?
   if (mph_unlikely(renv->unwind)) {
     mph_unwind_to(h, &mph_unwind_fun, renv->result);
     return NULL;
   }
   else {
+    // new local
+    h->local = renv->local;
     return renv->result;
   }
 }
@@ -351,6 +347,32 @@ void* mph_myield_to(mph_handler_t* h, mph_yield_fun_t fun, void* arg) {
   return mph_yield_to_internal(false, h, fun, arg);
 }
 
+//---------------------------------------------------------------------------
+// Abort
+//---------------------------------------------------------------------------
+
+
+typedef struct mph_abort_env_s {
+  void* local;
+  mph_unwind_fun_t* fun;
+  void* arg;
+} mph_abort_env_t;
+
+static void* mph_abort_fun(mp_resume_t* r, void* envarg) {
+  mph_abort_env_t yenv = *((mph_abort_env_t*)envarg); // copy as the drop can discard the memory
+  mp_resume_drop(r);
+  return (yenv.fun)(yenv.local,yenv.arg);
+}
+
+
+// Yield to a prompt without unwinding
+void mph_abort_to(mph_handler_t* h, mph_unwind_fun_t* fun, void* arg) {
+  mph_assert(mph_is_prompt_handler(h));
+  mph_abort_env_t env = { h->local, fun, arg };
+  mp_yield(h->prompt, &mph_abort_fun, &env);
+}
+
+
 
 //---------------------------------------------------------------------------
 // Resuming
@@ -361,18 +383,18 @@ struct mp_resume_s {
   void* _abstract;
 };
 
-void* mph_resume(mph_resume_t* resume, void* arg) {
-  mph_resume_env_t renv = { arg, false };
+void* mph_resume(mph_resume_t* resume, void* local, void* arg) {
+  mph_resume_env_t renv = { local, arg, false };
   return mp_resume((mp_resume_t*)resume, &renv);
 }
 
-void* mph_resume_tail(mph_resume_t* resume, void* arg) {
-  mph_resume_env_t renv = { arg, false };
+void* mph_resume_tail(mph_resume_t* resume, void* local, void* arg) {
+  mph_resume_env_t renv = { local, arg, false };
   return mp_resume_tail((mp_resume_t*)resume, &renv);
 }
 
 void mph_resume_unwind(mph_resume_t* resume) {
-  mph_resume_env_t renv = { NULL, true /* unwind */ };
+  mph_resume_env_t renv = { NULL, NULL, true /* unwind */ };
   mp_resume((mp_resume_t*)resume, &renv);
 }
 
@@ -388,6 +410,12 @@ void mph_resume_drop(mph_resume_t* resume) {
 }
 
 
+mph_resume_t* mph_resume_dup(mph_resume_t* resume) {
+  mp_resume_t* r = (mp_resume_t*)resume;
+  mp_resume_dup(r);
+  return resume;
+}
+
 //---------------------------------------------------------------------------
 // Under
 //---------------------------------------------------------------------------
@@ -396,7 +424,9 @@ void* mph_under(mph_kind_t under, void* (*fun)(void*), void* arg) {
   mph_handler_under_t h;
   h.under = under;
   h.handler.kind = MPH_UNDER;
+  h.handler.prompt = NULL;
   h.handler.hdata = NULL;
+  h.handler.local = NULL;
   void* result = NULL;
   {mph_with_handler(&h.handler){
     result = fun(arg);
@@ -413,8 +443,10 @@ void* mph_mask(mph_kind_t mask, size_t from, void* (*fun)(void*), void* arg) {
   mph_handler_mask_t h;
   h.mask = mask;
   h.from = from;
-  h.handler.kind = MPH_UNDER;
+  h.handler.kind = MPH_MASK;
+  h.handler.prompt = NULL;
   h.handler.hdata = NULL;
+  h.handler.local = NULL;
   void* result = NULL;
   {mph_with_handler(&h.handler) {
     result = fun(arg);

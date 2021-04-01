@@ -32,34 +32,36 @@
 typedef struct mph_handler_s mph_handler_t;
 typedef struct mph_resume_s  mph_resume_t;
 
-typedef void* (mph_start_fun_t)(void* hdata, void* arg);
-typedef void* (mph_yield_fun_t)(mph_resume_t* resume, void* hdata, void* arg);
-typedef void* (mph_unwind_fun_t)(void* hdata, void* arg);
+typedef void* (mph_start_fun_t)(mph_handler_t* h, void* arg);
+typedef void* (mph_yield_fun_t)(mph_resume_t* resume, void* local, void* arg);
+typedef void* (mph_unwind_fun_t)(void* local, void* arg);
 
 typedef const char* mph_kind_t;      // user extensible
 
 // Set up a handler
-mp_decl_export void*          mph_prompt_handler(mph_kind_t kind, size_t hdata_size, mph_start_fun_t* fun, void* arg);
+mp_decl_export void*          mph_prompt_handler(mph_kind_t kind, void* hdata, void* local, mph_start_fun_t* fun, void* arg);
 mp_decl_export mph_handler_t* mph_find(mph_kind_t kind);
 mp_decl_export void*          mph_yield_to(mph_handler_t* handler, mph_yield_fun_t fun, void* arg);
 mp_decl_export void           mph_unwind_to(mph_handler_t* handler, mph_unwind_fun_t fun, void* arg);
+mp_decl_export void           mph_abort_to(mph_handler_t* h, mph_unwind_fun_t fun, void* arg);
 
-mp_decl_export mph_kind_t     mph_kind(mph_handler_t* handler);
-mp_decl_export void*          mph_data(mph_handler_t* handler);
-
+mp_decl_export mph_kind_t     mph_get_kind(mph_handler_t* handler);
+mp_decl_export void*          mph_get_data(mph_handler_t* handler);
+mp_decl_export void*          mph_get_local(mph_handler_t* handler);
+mp_decl_export void**         mph_get_local_byref(mph_handler_t* handler);
 
 // Resume back to the yield point with a result; can be used at most once.
-mp_decl_export void*          mph_resume(mph_resume_t* resume, void* arg);         // resume 
-mp_decl_export void*          mph_resume_tail(mph_resume_t* resume, void* arg);    // resume as the last action in a `mph_yield_fun_t`
-mp_decl_export void           mph_resume_drop(mph_resume_t* resume);               // drop the resume object without resuming (but it will unwind if never resumed before)
+mp_decl_export void*          mph_resume(mph_resume_t* resume, void* local, void* arg);         // resume 
+mp_decl_export void*          mph_resume_tail(mph_resume_t* resume, void* local, void* arg);    // resume as the last action in a `mph_yield_fun_t`
+mp_decl_export void           mph_resume_drop(mph_resume_t* resume);                            // drop the resume object without resuming (but it will unwind if never resumed before)
 
 
 // Light weight linear handlers; cannot be yielded to (or unwound to)
 // The finally, under, and mask handlers are linear. Effect handlers that always tail-resume are linear as well.
 // Todo: provide inline macros
-mp_decl_export void*          mph_linear_handler(mph_kind_t kind, void* hdata, mph_start_fun_t* fun, void* arg);
+mp_decl_export void*          mph_linear_handler(mph_kind_t kind, void* hdata, void* local, mph_start_fun_t* fun, void* arg);
 mp_decl_export void*          mph_under(mph_kind_t under, void* (*fun)(void*), void* arg);
-mp_decl_export void*          mph_mask(mph_kind_t mask, int from);
+mp_decl_export void*          mph_mask(mph_kind_t mask, size_t from);
 
 
 // Multi-shot
@@ -68,8 +70,8 @@ mp_decl_export mph_resume_t*  mph_resume_dup(mph_resume_t* r);              // o
 
 
 // low-level access
-mp_decl_export mph_handler_t* mph_top(void);
-mp_decl_export mph_handler_t* mph_parent(mph_handler_t* handler);
+mp_decl_export mph_handler_t* mph_get_top(void);
+mp_decl_export mph_handler_t* mph_get_parent(mph_handler_t* handler);
 
 extern mph_kind_t MPH_FINALLY;
 extern mph_kind_t MPH_UNDER;

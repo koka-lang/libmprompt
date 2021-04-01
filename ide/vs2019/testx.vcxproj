@@ -33,6 +33,9 @@
     <ProjectReference Include="libmpeffx.vcxproj">
       <Project>{cc1b47e9-02cf-4840-867b-73e5a9620d13}</Project>
     </ProjectReference>
+    <ProjectReference Include="libmphndx.vcxproj">
+      <Project>{cc1b47e9-02cf-4840-867b-73e5a9620d14}</Project>
+    </ProjectReference>
     <ProjectReference Include="libmpromptx.vcxproj">
       <Project>{aff5a4c1-5f72-47d4-92e7-92c052fc58c5}</Project>
     </ProjectReference>
