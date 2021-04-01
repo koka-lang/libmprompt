@@ -32,8 +32,7 @@
 
 // Types
 typedef struct mp_prompt_s   mp_prompt_t;     // resumable "prompts" (in-place growable stack chain)
-typedef struct mp_resume_s   mp_resume_t;     // single-shot resume
-typedef struct mp_mresume_s  mp_mresume_t;    // multi-shot resume
+typedef struct mp_resume_s   mp_resume_t;     // abstract resumption
 
 // Function types
 typedef void* (mp_start_fun_t)(mp_prompt_t*, void* arg); 
@@ -46,23 +45,17 @@ mp_decl_export void* mp_prompt(mp_start_fun_t* fun, void* arg);
 mp_decl_export void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
 
 // Resume back to the yield point with a result; can be used at most once.
-mp_decl_export void* mp_resume(mp_resume_t* resume, void* arg);         // resume once
-mp_decl_export void* mp_resume_tail(mp_resume_t* resume, void* arg);    // resume once as the last action in a `mp_yield_fun_t`
+mp_decl_export void* mp_resume(mp_resume_t* resume, void* arg);         // resume 
+mp_decl_export void* mp_resume_tail(mp_resume_t* resume, void* arg);    // resume as the last action in a `mp_yield_fun_t`
 mp_decl_export void  mp_resume_drop(mp_resume_t* resume);               // drop the resume object without resuming
-
 
 
 //---------------------------------------------------------------------------
 // Multi-shot resumptions; use with care in combination with linear resources.
 //---------------------------------------------------------------------------
 
-typedef void* (mp_myield_fun_t)(mp_mresume_t*, void* arg);
-
-mp_decl_export void* mp_myield(mp_prompt_t* p, mp_myield_fun_t* fun, void* arg);
-mp_decl_export void* mp_mresume(mp_mresume_t* r, void* arg);
-mp_decl_export void* mp_mresume_tail(mp_mresume_t* r, void* arg);
-mp_decl_export void  mp_mresume_drop(mp_mresume_t* r);
-mp_decl_export mp_mresume_t* mp_mresume_dup(mp_mresume_t* r);
+mp_decl_export void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
+mp_decl_export mp_resume_t* mp_resume_dup(mp_resume_t* r);              // only myield resumptions can be dup'd
 
 
 
@@ -97,8 +90,8 @@ mp_decl_export void mp_init(mp_config_t* config);
 // (only `mp_mresume_should_unwind` is required by `libmphandler`)
 //---------------------------------------------------------------------------
 
-mp_decl_export long         mp_mresume_resume_count(mp_mresume_t* r);
-mp_decl_export int          mp_mresume_should_unwind(mp_mresume_t* r);  // refcount==1 && resume_count==0
+mp_decl_export long         mp_resume_resume_count(mp_resume_t* r);
+mp_decl_export int          mp_resume_should_unwind(mp_resume_t* r);  // refcount==1 && resume_count==0
 
 mp_decl_export mp_prompt_t* mp_prompt_create(void);
 mp_decl_export void*        mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg);
