@@ -20,7 +20,7 @@ There are two libraries provided:
   `libmpromptx` is the C++ compiled variant that integrates exception handling
   where exceptions are propagated correctly through the gstacks.
 
-- `libmphandler`: a small example library that uses `libmprompt` to implement
+- `libmpeff`: a small example library that uses `libmprompt` to implement
   efficient algebraic effect handlers in C (with a similar interface as [libhandler]).
 
 Particular aspects:n
@@ -91,7 +91,7 @@ We use `cmake` to build:
 > ./mptest
 ```
 
-This will build the libraries `libmpromptx.a` and `libmphandlerx.a`.
+This will build the libraries `libmpromptx.a` and `libmpeffx.a`.
 
 Pass the option `cmake ../.. -DMP_USE_C=ON` to build the C versions of the libraries
 (but these do not handle- or propagate exceptions).
@@ -126,7 +126,7 @@ Some known issues are:
 ```C
 // Types
 typedef struct mp_prompt_s  mp_prompt_t;     // resumable "prompts"
-typedef struct mp_resume_s  mp_resume_t;     // single-shot resume
+typedef struct mp_resume_s  mp_resume_t;     // abstract resumption
 
 // Function types
 typedef void* (mp_start_fun_t)(mp_prompt_t*, void* arg); 
@@ -146,14 +146,8 @@ void  mp_resume_drop(mp_resume_t* resume);
 
 ```C
 // Multi-shot resumptions; use with care in combination with linear resources.
-typedef struct mp_mresume_s  mp_mresume_t;    // multi-shot resume
-typedef void* (mp_myield_fun_t)(mp_mresume_t*, void* arg);
-
-void* mp_myield(mp_prompt_t* p, mp_myield_fun_t* fun, void* arg);
-void* mp_mresume(mp_mresume_t* r, void* arg);
-void* mp_mresume_tail(mp_mresume_t* r, void* arg);
-void  mp_mresume_drop(mp_mresume_t* r);
-mp_mresume_t* mp_mresume_dup(mp_mresume_t* r);
+void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
+mp_resume_t* mp_resume_dup(mp_resume_t* r);
 ```
 
 ### Semantics
@@ -518,7 +512,7 @@ for debugging compared to callback based programming for example.
 (Unfortunately, full backtraces are not yet working on Windows with Visual Studio).
 
 
-## The libmphandler Interface
+## The libmpeff Interface
 
 A small library on top of `libmprompt` that implements
 algebraic effect handlers. Effect handlers give more structure
