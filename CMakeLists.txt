@@ -114,7 +114,7 @@ endif()
 # -----------------------------------------------------------------------------
 
 if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
-  list(APPEND mp_cflags -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
+  list(APPEND mp_cflags -flto -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
 endif()
 
 if(APPLE)
@@ -176,6 +176,7 @@ add_executable(mptest ${test_sources})
 target_compile_options(mptest PRIVATE ${mp_cflags})
 target_include_directories(mptest PRIVATE include)
 target_link_libraries(mptest PRIVATE mpeff mprompt)
+target_link_options(mptest PUBLIC -flto)
 
 enable_testing()
 add_test(test_api, mptest)
