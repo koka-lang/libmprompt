@@ -62,7 +62,7 @@ mp_decl_export void           mph_resume_unwind(mph_resume_t* resume);
 // Todo: provide inline macros
 mp_decl_export void*          mph_linear_handler(mph_kind_t kind, void* hdata, void* local, mph_start_fun_t* fun, void* arg);
 mp_decl_export void*          mph_under(mph_kind_t under, void* (*fun)(void*), void* arg);
-mp_decl_export void*          mph_mask(mph_kind_t mask, size_t from);
+mp_decl_export void*          mph_mask(mph_kind_t mask, size_t from, void* (*fun)(void*), void* arg);
 
 
 // Multi-shot

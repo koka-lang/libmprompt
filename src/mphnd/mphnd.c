@@ -225,7 +225,7 @@ void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg1, voi
 void mph_unwind_to(mph_handler_t* target, mph_unwind_fun_t* fun, void* arg1, void* arg2) {
   // TODO: walk the handlers and invoke finally frames
   // and finally yield up to abort
-  mph_abort_to(target, fun arg1, arg2);
+  mph_abort_to(target, fun, arg1, arg2);
 }
 #endif
 

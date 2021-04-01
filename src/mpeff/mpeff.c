@@ -197,7 +197,7 @@ static void* mpe_perform_at(mph_handler_t* mph, mpe_optag_t optag, void* arg) {
   if (mpe_likely(opkind == MPE_OP_TAIL_NOOP)) {
     // tail resumptive, calls no operations, execute in place
     void** plocal = mph_get_local_byref(mph);
-    mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, plocal };
+    mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, {plocal} };
     return (op->opfun)(&resume, *plocal, arg);
   }
   else if (mpe_likely(opkind == MPE_OP_TAIL)) {
