@@ -7,7 +7,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmpromptx", "libmpromptx.
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "testx", "testx.vcxproj", "{AFF5A4C2-5F72-47D4-92E7-92C052FC58C5}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmphandlerx", "libmphandlerx.vcxproj", "{CC1B47E9-02CF-4840-867B-73E5A9620D13}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libmpeffx", "libmpeffx.vcxproj", "{CC1B47E9-02CF-4840-867B-73E5A9620D13}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

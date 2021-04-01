@@ -5,8 +5,8 @@
   found in the "LICENSE" file at the root of this distribution.
 -----------------------------------------------------------------------------*/
 #pragma once
-#ifndef MPE_HANDLER_H
-#define MPE_HANDLER_H
+#ifndef MPE_EFFECTH_H
+#define MPE_EFFECTH_H
 
 #include <stdbool.h>
 #include <stdint.h>

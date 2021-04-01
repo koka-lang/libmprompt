@@ -11,12 +11,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\include\mphandler.h">
+    <ClInclude Include="..\..\include\mpeff.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\src\mphandler\handler.c">
+    <ClCompile Include="..\..\src\mpeff\effecth.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
