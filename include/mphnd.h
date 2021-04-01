@@ -42,7 +42,7 @@ typedef const char* mph_kind_t;      // user extensible
 mp_decl_export void*          mph_prompt_handler(mph_kind_t kind, size_t hdata_size, mph_start_fun_t* fun, void* arg);
 mp_decl_export mph_handler_t* mph_find(mph_kind_t kind);
 mp_decl_export void*          mph_yield_to(mph_handler_t* handler, mph_yield_fun_t fun, void* arg);
-mp_decl_export void*          mph_unwind_to(mph_handler_t* handler, mph_unwind_fun_t fun, void* arg);
+mp_decl_export void           mph_unwind_to(mph_handler_t* handler, mph_unwind_fun_t fun, void* arg);
 
 mp_decl_export mph_kind_t     mph_kind(mph_handler_t* handler);
 mp_decl_export void*          mph_data(mph_handler_t* handler);
@@ -51,7 +51,7 @@ mp_decl_export void*          mph_data(mph_handler_t* handler);
 // Resume back to the yield point with a result; can be used at most once.
 mp_decl_export void*          mph_resume(mph_resume_t* resume, void* arg);         // resume 
 mp_decl_export void*          mph_resume_tail(mph_resume_t* resume, void* arg);    // resume as the last action in a `mph_yield_fun_t`
-mp_decl_export void           mph_resume_drop(mph_resume_t* resume);               // drop the resume object without resuming
+mp_decl_export void           mph_resume_drop(mph_resume_t* resume);               // drop the resume object without resuming (but it will unwind if never resumed before)
 
 
 // Light weight linear handlers; cannot be yielded to (or unwound to)
