@@ -102,6 +102,14 @@ typedef struct mpe_frame_mask_s {
 } mpe_frame_mask_t;
 
 
+// Finally frame
+typedef struct mpe_frame_finally_s {
+  mpe_frame_t       frame;
+  mpe_releasefun_t* fun;
+  void*             local;
+} mpe_frame_finally_t;
+
+
 // For search efficiency, non-handler frames are identified by a unique effect tag
 MPE_DEFINE_EFFECT0(mpe_frame_under)
 MPE_DEFINE_EFFECT0(mpe_frame_mask)
@@ -548,5 +556,34 @@ void* mpe_mask(mpe_effect_t eff, size_t from, mpe_actionfun_t* fun, void* arg) {
   {mpe_with_frame(&f.frame) {
     result = fun(arg);
   }}
+  return result;
+}
+
+
+
+/*-----------------------------------------------------------------
+  Finally
+-----------------------------------------------------------------*/
+
+void* mpe_finally(void* local, mpe_releasefun_t* finally_fun, mpe_actionfun_t* fun, void* arg) {
+  mpe_frame_finally_t f;
+  f.frame.effect = MPE_EFFECT(mpe_frame_finally);
+  f.fun = finally_fun;
+  f.local = local;
+  void* result = NULL;
+  #if MPE_HAS_TRY
+  try {
+  #endif
+    {mpe_with_frame(&f.frame) {
+      result = fun(arg);
+    }}
+    (f.fun)(f.local);
+  #if MPE_HAS_TRY       // not needed in C as there we unwind the frames explicitly
+  }
+  catch (...) {
+    (f.fun)(f.local);   // cannot use raii as fun can throw itself
+    throw;              // re-throw
+  }
+  #endif
   return result;
 }
