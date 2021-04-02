@@ -176,13 +176,13 @@ mp_prompt_t* mp_prompt_create(void) {
 }
 
 // Free a prompt and drop its children
-static void mp_prompt_free(mp_prompt_t* p) {
+static void mp_prompt_free(mp_prompt_t* p, bool delay) {
   mp_assert_internal(!mp_prompt_is_active(p));
   p = p->top;
   while (p != NULL) {
     mp_assert_internal(p->refcount == 0);
     mp_prompt_t* parent = p->parent;    
-    mp_gstack_free(p->gstack);
+    mp_gstack_free(p->gstack, delay);
     if (parent != NULL) {
       mp_assert_internal(parent->refcount == 1);
       parent->refcount--;
@@ -192,12 +192,22 @@ static void mp_prompt_free(mp_prompt_t* p) {
 }
 
 // Decrement the refcount (and free when it becomes zero).
-static void mp_prompt_drop(mp_prompt_t* p) {
+static void mp_prompt_drop_internal(mp_prompt_t* p, bool delay) {
   int64_t i = p->refcount--;
   if (i <= 1) {
-    mp_prompt_free(p);
+    mp_prompt_free(p, delay);
   }
 }
+
+static void mp_prompt_drop(mp_prompt_t* p) {
+  mp_prompt_drop_internal(p, false);
+}
+
+#ifdef __cplusplus
+static void mp_prompt_drop_delayed(mp_prompt_t* p) {
+  mp_prompt_drop_internal(p, true);
+}
+#endif
 
 // Increment the refcount
 static mp_prompt_t* mp_prompt_dup(mp_prompt_t* p) {
@@ -231,7 +241,6 @@ static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_poin
 }
 
 
-
 //-----------------------------------------------------------------------
 // Create an initial prompt
 //-----------------------------------------------------------------------
@@ -252,13 +261,13 @@ static  void mp_prompt_stack_entry(void* penv, void* trap_frame) {
   #ifdef __cplusplus
   try {
   #endif
-    void* result = (env->fun)(p, env->arg);
-    // RET: return from a prompt
-    mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
-    ret->arg = result;
-    ret->fun = NULL;
-    ret->kind = MP_RETURN;
-    mp_longjmp(&ret->jmp);
+      void* result = (env->fun)(p, env->arg);
+      // RET: return from a prompt
+      mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
+      ret->arg = result;
+      ret->fun = NULL;
+      ret->kind = MP_RETURN;
+      mp_longjmp(&ret->jmp);
   #ifdef __cplusplus
   }
   catch (...) {
@@ -297,8 +306,7 @@ static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, m
     #ifdef __cplusplus
     mp_assert_internal(ret->kind == MP_EXCEPTION);
     mp_trace_message("rethrow propagated exception again (from prompt %p)..\n", p);
-    mp_prompt_drop(p);
-    //mp_throw_prepare(); 
+    mp_prompt_drop_delayed(p);
     std::rethrow_exception(ret->exn);
     #else
     mp_unreachable("invalid return kind");

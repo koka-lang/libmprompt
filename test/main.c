@@ -28,6 +28,7 @@ int main(int argc, char** argv) {
   //config.gpool_enable = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
   //config.stack_initial_commit = 64 * 1024L;   // use when debugging with lldb on macOS
+  //config.stack_cache_count = -1;
   mp_init(&config);
 
   size_t start_rss = 0;
