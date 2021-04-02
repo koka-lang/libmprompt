@@ -451,7 +451,7 @@ void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
 }
 
 // Yield back to a prompt with a `mp_resume_t` resumption.
-void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
+void* mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
   return mp_yield_internal(MP_YIELD_MULTI, p, fun, arg);
 }
 

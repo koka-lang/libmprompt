@@ -278,7 +278,7 @@ static void* mpe_perform_yield_to(mpe_resumption_kind_t rkind, mpe_frame_handle_
   // yield up
   mpe_resume_env_t* renv = (mpe_resume_env_t*)(mpe_likely(rkind < MPE_RESUMPTION_MULTI) 
                                                 ? mp_yield(h->prompt, &mpe_perform_op_clause, &penv)
-                                                : mp_myield(h->prompt, &mpe_perform_op_clause, &penv));
+                                                : mp_yieldm(h->prompt, &mpe_perform_op_clause, &penv));
   // resumed!                     
   h->local = renv->local;           // set new state
   h->frame.parent = mpe_frame_top;  // relink handlers

@@ -54,7 +54,7 @@ mp_decl_export void  mp_resume_drop(mp_resume_t* resume);               // drop 
 // Multi-shot resumptions; use with care in combination with linear resources.
 //---------------------------------------------------------------------------
 
-mp_decl_export void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
+mp_decl_export void* mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
 mp_decl_export mp_resume_t* mp_resume_dup(mp_resume_t* r);              // only myield resumptions can be dup'd
 
 

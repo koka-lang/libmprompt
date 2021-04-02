@@ -127,6 +127,7 @@ mpe_decl_export void  mpe_resume_release(mpe_resume_t* resume);                 
 mpe_decl_export void* mpe_mask(mpe_effect_t eff, size_t from, mpe_actionfun_t* fun, void* arg);
 mpe_decl_export void* mpe_finally(void* local, mpe_releasefun_t* finally_fun, mpe_actionfun_t* fun, void* arg);
 
+
 /*-----------------------------------------------------------------
   Operation tags
 -----------------------------------------------------------------*/
