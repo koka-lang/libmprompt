@@ -11,10 +11,11 @@ option(MP_USE_C  "Build C versions of the library without exception support" OFF
 
 set(mp_version "0.1")
 
-set(mprompt_sources  src/mprompt/libmprompt.c)
+# all sources are included in one file so we can generate independent libraries and stand-alone object files.
+set(mprompt_sources  src/mprompt/main.c)
     # util.c gstack-pool.c gstack-win/mmap.c gstack.c mprompt.c
 
-set(mpeff_sources    src/mpeff/libmpeff.c)
+set(mpeff_sources    src/mpeff/main.c)
     # src/mpeff/mpeff.c
 
 set(test_sources
@@ -141,6 +142,7 @@ message(STATUS "")
 
 # -----------------------------------------------------------------------------
 # Libraries
+# Each library is standalone; mphnd includes mprompt, while mpeff includes mphnd (and mprompt)
 # -----------------------------------------------------------------------------
 
 add_library(mprompt STATIC ${mprompt_sources} ${mprompt_asm_source})
@@ -161,7 +163,6 @@ if (APPLE)
 endif()
 
 add_library(mpeff STATIC ${mpeff_sources} ${mprompt_asm_source})
-# set_property(TARGET mprompt PROPERTY POSITION_INDEPENDENT_CODE ON)
 set_target_properties(mpeff PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mpeff_name} )
 target_compile_definitions(mpeff PRIVATE MPE_STATIC_LIB)
 target_compile_options(mpeff PRIVATE ${mp_cflags})
@@ -177,7 +178,6 @@ add_executable(mptest ${test_sources})
 target_compile_options(mptest PRIVATE ${mp_cflags})
 target_include_directories(mptest PRIVATE include)
 target_link_libraries(mptest PRIVATE mpeff)
-target_link_options(mptest PUBLIC -flto)
 
 enable_testing()
 add_test(test_api, mptest)

@@ -7,5 +7,5 @@
   Include all sources in one file for compilation for better optimization
 -----------------------------------------------------------------------------*/
 
-#include "../mprompt/libmprompt.c"
 #include "mpeff.c"
+#include "../mprompt/main.c"
