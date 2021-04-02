@@ -174,7 +174,7 @@ mp_longjmp ENDP
 ; unwinding since the stack limits in the thread local TIB are not updated. For exceptions we will 
 ; need to catch and propagate manually through prompt points anyways). 
 ; Todo: currently we do not update the frame when the return point changes.
-mp_stack_enter PROC FRAME
+mp_stack_enterx PROC 
   mov     r10, rsp          ; save rsp in r10
   mov     r11, [r10]        ; rip     
   
@@ -193,14 +193,20 @@ mp_stack_enter PROC FRAME
   ; RSP+8   RIP  
   ; RSP+0   error code      ; we use the return jmpbuf_t**
   push    rcx
-  lea     rax, [r10+8]      ; return rsp (minus return address)
+  ;lea     rax, [r10+8]      ; return rsp (minus return address)
+  mov     r11, [r9]
+  mov     rax, [r11+8]
   push    rax               
   push    rdx
   push    r8
-  push    r11               ; return rip
+  ;push    r11               ; return rip
+  mov     rax, [r11]
+  push    rax
   push    r9                ; return point
   ; and fall through (with un-aligned stack)
+mp_stack_enterx ENDP
 
+mp_stack_enter_trap PROC FRAME
 .PUSHFRAME code            ; unwind rsp - 48
   sub     rsp, 40          ; reserve home area for calls + align
 .ALLOCSTACK 40    
@@ -222,14 +228,15 @@ mp_stack_enter PROC FRAME
   mov     rcx, [rcx]
   jmp     mp_longjmp       ; and longjmp
 
-mp_stack_enter ENDP
+mp_stack_enter_trap ENDP
 
-; unused plain version without machine frame
-mp_stack_enter_plain PROC FRAME 
+; version without machine frame using our own "mini trap frame" of just rsp+rip
+mp_stack_enter PROC FRAME 
   mov     r10, rsp         ; old rsp
   mov     r11, [rsp]       ; rip
-  sub     rsp, 40          ; home area + align
-.ALLOCSTACK 40
+.PUSHREG rsp  
+  sub     rsp, 32          ; home area + align
+.ALLOCSTACK 32
 .ENDPROLOG
 
   mov     gs:[8], rcx      ; set new stack base
@@ -238,13 +245,17 @@ mp_stack_enter_plain PROC FRAME
 
   and     rcx, NOT 15      ; align new stack base
   mov     rsp, rcx         ; switch the stack
-  push    r11              ; help unwinding code by putting in return rip (remove?)
-  push    r9               ; save return jmpbuf_t**
+  mov     r8,  [r9]
+  mov     rax, [r8]
+  push    rax  
+  mov     rax, [r8+8]
+  sub     rax, 8           ; adjust for rip
+  push    rax
   sub     rsp, 32          ; home space 
 
   mov     rax, [r10+40]    ; fun
   mov     rcx, [r10+48]    ; set arg from old stack
-  xor     rdx, rdx         ; no trap frame
+  lea     rdx, [rsp+32]    ; mini trap frame: rsp + rip
   call    rax              ; and call the function (it should never return but use longjmp)
   
   ; we should never reach this...
@@ -254,7 +265,7 @@ mp_stack_enter_plain PROC FRAME
   mov     rcx, [rcx]       
   jmp     mp_longjmp
 
-mp_stack_enter_plain ENDP
+mp_stack_enter ENDP
 
 
 END

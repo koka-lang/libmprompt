@@ -22,6 +22,7 @@
 #endif
 
 
+
 //-----------------------------------------------------------------------
 // Types
 //-----------------------------------------------------------------------
@@ -46,7 +47,6 @@ typedef struct mp_return_point_s {   // allocated on the parent stack (which per
   void*            arg;     // if yielding, the argument to the function; if returning, the result.
   #ifdef __cplusplus
   std::exception_ptr exn;   // returning with an exception to propagate
-  //std::exception* exn;
   #endif
 } mp_return_point_t;
 
@@ -70,6 +70,8 @@ struct mp_prompt_s {
                             // note: the prompt structure itself is allocated at the base of the `gstack` to avoid a separate allocation.
   mp_return_point_t* return_point;  // return point in the parent (if not suspended..)
   mp_resume_point_t* resume_point;  // resume point for a suspended prompt chain. (the resume will be in the `top->gstack`)
+
+  mp_trap_frame_t* trap_frame;
 };
 
 
@@ -172,6 +174,7 @@ mp_prompt_t* mp_prompt_create(void) {
   p->gstack = gstack;
   p->resume_point = NULL;
   p->return_point = NULL;
+  p->trap_frame = NULL;
   return p;
 }
 
@@ -223,6 +226,7 @@ static inline mp_resume_point_t* mp_prompt_link(mp_prompt_t* p, mp_return_point_
   p->top = NULL;
   if (ret != NULL) { p->return_point = ret; }                         
               else { mp_assert_internal(p->return_point != NULL); }  // used for tail resumes
+  mp_trap_frame_update(p->trap_frame,&ret->jmp);
   mp_assert_internal(mp_prompt_is_active(p));  
   return p->resume_point;
 }
@@ -253,10 +257,11 @@ typedef struct mp_entry_env_s {
   void* arg;
 } mp_entry_env_t;
 
-static  void mp_prompt_stack_entry(void* penv, void* trap_frame) {
+static  void mp_prompt_stack_entry(void* penv, mp_trap_frame_t* trap_frame) {
   MP_UNUSED(trap_frame);
   mp_entry_env_t* env = (mp_entry_env_t*)penv;
   mp_prompt_t* p = env->prompt;
+  p->trap_frame = trap_frame;
   //mp_prompt_stack_entry(p, env->fun, env->arg);
   #ifdef __cplusplus
   try {

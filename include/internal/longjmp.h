@@ -27,10 +27,14 @@
    masks. In those cases we try to substitute our own definitions.
 ------------------------------------------------------------------------------*/
 
-typedef void (mp_stack_start_fun_t)(void* arg, void* trap_frame);
-
 // A register context. Always has `reg_ip` and `reg_sp` members.
 typedef struct mp_jmpbuf_s mp_jmpbuf_t;
+
+typedef struct mp_trap_frame_s mp_trap_frame_t;
+void mp_trap_frame_update(mp_trap_frame_t* tf, mp_jmpbuf_t* jmp);
+
+typedef void (mp_stack_start_fun_t)(void* arg, mp_trap_frame_t* trap_frame);
+
 
 // Primitive functions in assembler 
 // note: do not mark `mp_stack_enter` as _noreturn_ or otherwise the backtrace will be wrong in gdb.
@@ -78,6 +82,20 @@ struct mp_jmpbuf_s {
   uint16_t  reg_fpcr;
   uint16_t  context_padding;
 };
+
+#define MP_TRAP_FRAME_DEFINED  (1)
+typedef struct mp_trap_frame_s {
+  void* sp;
+  void* ip;
+} mp_trap_frame_t;
+
+static inline void mp_trap_frame_update(mp_trap_frame_t* tf, mp_jmpbuf_t* jmp) {
+  if (tf != NULL) {
+    tf->sp = (uint8_t*)jmp->reg_sp - 8;
+    tf->ip = jmp->reg_ip;
+  }
+}
+
 
 #elif defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__x86_64)
 
@@ -128,6 +146,16 @@ struct mp_jmpbuf_s {
 
 #else
 #error "unsupported platform"
+#endif
+
+#if !MP_TRAP_FRAME_DEFINED
+typedef struct mp_trap_frame_s {
+  void* ip;
+} mp_trap_frame_t;
+
+static inline void mp_trap_frame_update(mp_trap_frame_t* tf, mp_jmpbuf_t* jmp) {
+  // nothing
+}
 #endif
 
 #endif
