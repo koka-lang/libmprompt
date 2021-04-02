@@ -24,8 +24,10 @@
 
   The mp_gpool_t has a "free stack" itself (`free`) consisting of N (~32000) `int16_t`
   indices which are demand initialized to zero. The top of the stack starts
-  at 0. Each entry at index `i` represents an available gstack at index `i + free[i]`:
+  at 0. Each entry at index `i` represents an available gstack at index `N - free[i] - i`:
   so the initial on-demand zero'd `free` stack makes all gstacks available in the pool :-)
+  (The top index 0 is not used (reserved for the first block) so the for next index
+   `i==1` we get the gstack index `N-1` and going down from there.)
   From this free stack we can pop gstacks to use, or push back ones that are freed
   in a very efficient way. Moreover, reused gstacks do not need to be re-committed
   (and re-zero initialized by the OS).
@@ -151,9 +153,10 @@ static uint8_t* mp_gpool_allocx(uint8_t** stk, ssize_t* stk_size) {
     _access += gp->free[gp->free_sp + 64]; // ensure no page fault happens inside the spin lock
     mp_spin_lock(&gp->free_lock) {
       // pop from free stack
-      sp = gp->free_sp++;
+      sp = gp->free_sp;
       if (sp < gp->block_count) {
-        block_idx = gp->free[sp] + sp;   // block index is the value + sp, this way gp->free can be zero initialized !
+        gp->free_sp = sp + 1;
+        block_idx = gp->block_count - gp->free[sp] - sp;   // block index is the count - value - sp, this way gp->free can be zero initialized !
       }
     }
     mp_assert_internal(block_idx >= 0 && block_idx < gp->block_count);
@@ -218,7 +221,7 @@ static void mp_gpool_free(uint8_t* stk) {
         // push on free stack
         gp->free_sp--;
         sp = gp->free_sp;
-        idx = block_idx - sp;
+        idx = gp->block_count - block_idx - sp;
         gp->free[sp] = (uint16_t)idx;
       }
       mp_assert(idx >= INT16_MIN && idx <= INT16_MAX);

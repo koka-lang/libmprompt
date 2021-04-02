@@ -23,8 +23,19 @@ static void     mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit);
 static const char* mp_system_error_message(int errno, const char* fmt, ...);
 
 // Reserve memory
+// we use a hint address in windows to try to stay under the system stack for better backtraces
+static uint8_t* mp_os_reserve_hint = (uint8_t*)(32 * MP_GIB);
+
 static uint8_t* mp_os_mem_reserve(ssize_t size) {
-  uint8_t* p = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
+  uint8_t* p = NULL;
+  if (mp_os_reserve_hint != NULL) {  
+    uint8_t* hint = mp_os_reserve_hint;
+    mp_os_reserve_hint += mp_align_up(size, MP_MIB); // data race ok as it is just a hint
+    p = (uint8_t*)VirtualAlloc(mp_os_reserve_hint, size, MEM_RESERVE, PAGE_NOACCESS);    
+  }
+  if (p == NULL) {
+    p = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
+  }
   if (p == NULL) {
     mp_system_error_message(ENOMEM, "failed to reserve memory of size %zd\n", size);
   }

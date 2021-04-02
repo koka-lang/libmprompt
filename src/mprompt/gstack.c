@@ -54,8 +54,12 @@ static ssize_t os_gstack_gap              = 64 * MP_KIB;   // noaccess gap betwe
 static bool    os_gstack_reset_decommits  = false;         // force full decommit when resetting a stack?
 static ssize_t os_gstack_cache_count      = 4;             // number of prompts to keep in the thread local cache
 static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
-static ssize_t os_gpool_max_size          = 256 * MP_GIB;  // virtual size of one gstack pooled area (holds about 2^15 gstacks)
 
+#if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be lower than the system stack)
+static ssize_t os_gpool_max_size          = 32 * MP_GIB;   // virtual size of one gstack pooled area (holds about 2^15 gstacks)
+#else
+static ssize_t os_gpool_max_size          = 256 * MP_GIB;  // virtual size of one gstack pooled area (holds about 2^15 gstacks)
+#endif
 
 // Find base of an area in the stack
 static uint8_t* mp_base(uint8_t* sp, ssize_t size) {
