@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # Copyright (c) 2021, Microsoft Research, Daan Leijen
 # -----------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.9)
 project(libmimalloc C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
@@ -111,9 +111,10 @@ endif()
 # -----------------------------------------------------------------------------
 # Flags
 # -----------------------------------------------------------------------------
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 
 if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
-  list(APPEND mp_cflags -flto -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
+  list(APPEND mp_cflags -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
 endif()
 
 if(APPLE)
@@ -162,6 +163,8 @@ if (APPLE)
   # target_link_options(mprompt PUBLIC -Wl,-no_keep_dwarf_unwind)
 endif()
 
+
+# mpeff library
 add_library(mpeff STATIC ${mpeff_sources} ${mprompt_asm_source})
 set_target_properties(mpeff PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mpeff_name} )
 target_compile_definitions(mpeff PRIVATE MPE_STATIC_LIB)
@@ -174,6 +177,7 @@ if (NOT WIN32)
   target_link_libraries(mpeff PUBLIC pthread)
 endif()
 
+# tests
 add_executable(mptest ${test_sources})
 target_compile_options(mptest PRIVATE ${mp_cflags})
 target_include_directories(mptest PRIVATE include)
