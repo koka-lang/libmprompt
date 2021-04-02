@@ -224,9 +224,13 @@ static inline mp_resume_point_t* mp_prompt_link(mp_prompt_t* p, mp_return_point_
   p->parent = mp_prompt_top();
   _mp_prompt_top = p->top;
   p->top = NULL;
-  if (ret != NULL) { p->return_point = ret; }                         
-              else { mp_assert_internal(p->return_point != NULL); }  // used for tail resumes
-  mp_unwind_frame_update(p->unwind_frame,&ret->jmp);
+  if (mp_likely(ret != NULL)) { 
+    p->return_point = ret; 
+    mp_unwind_frame_update(p->unwind_frame, &ret->jmp);
+  }                         
+  else {
+    mp_assert_internal(p->return_point != NULL);  
+  }
   mp_assert_internal(mp_prompt_is_active(p));  
   return p->resume_point;
 }
