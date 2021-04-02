@@ -6,6 +6,6 @@
 
   Include all sources in one file for compilation for better optimization
 -----------------------------------------------------------------------------*/
-#include "util.c"
-#include "gstack.c"
 #include "mprompt.c"
+#include "gstack.c"
+#include "util.c"

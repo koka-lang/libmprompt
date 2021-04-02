@@ -7,5 +7,5 @@
   Include all sources in one file for compilation for better optimization
 -----------------------------------------------------------------------------*/
 
-#include "../mphnd/libmphnd.c"
 #include "mpeff.c"
+#include "../mphnd/main.c"

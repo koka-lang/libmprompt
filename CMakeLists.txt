@@ -11,15 +11,17 @@ option(MP_USE_C  "Build C versions of the library without exception support" OFF
 
 set(mp_version "0.1")
 
-set(mprompt_sources  src/mprompt/libmprompt.c)
+# sources are included in a single file to get better codegen and enable single object files for linking
+set(mprompt_sources  src/mprompt/main.c)
     # util.c gstack-pool.c gstack-win/mmap.c gstack.c mprompt.c
 
-set(mphnd_sources    src/mphnd/libmphnd.c)
+set(mphnd_sources    src/mphnd/main.c)
     # src/mphnd/mphnd.c
 
-set(mpeff_sources    src/mpeff/libmpeff.c)
+set(mpeff_sources    src/mpeff/main.c)
     # src/mpeff/mpeff.c
 
+# tests    
 set(test_sources
     test/util.c
     test/effects.c
