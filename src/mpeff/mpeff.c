@@ -69,20 +69,11 @@ static inline void mpe_free(void* p) {
   Types
 -----------------------------------------------------------------*/
 
-// Frame types
-typedef enum mpe_frame_type_e {
-  MPE_FRAME_HANDLER,
-  MPE_FRAME_UNDER,
-  MPE_FRAME_FINALLY,
-  MPE_FRAME_END
-} mpe_frame_type_t;
-
 
 // A general frame
 typedef struct mpe_frame_s {
   mpe_effect_t        effect;     // every frame has an effect (to speed up tests)
   struct mpe_frame_s* parent;
-  mpe_frame_type_t    ftype;
 } mpe_frame_t;
 
 
@@ -102,16 +93,26 @@ typedef struct mpe_frame_under_s {
   mpe_effect_t  under;    // ignore frames until the innermost `under` effect
 } mpe_frame_under_t;
 
+
+// An mask frame 
+typedef struct mpe_frame_mask_s {
+  mpe_frame_t   frame;
+  mpe_effect_t  mask;    
+  size_t        from;
+} mpe_frame_mask_t;
+
+
 // For search efficiency, non-handler frames are identified by a unique effect tag
-MPE_DEFINE_EFFECT0(mpe_under)
+MPE_DEFINE_EFFECT0(mpe_frame_under)
+MPE_DEFINE_EFFECT0(mpe_frame_mask)
+MPE_DEFINE_EFFECT0(mpe_frame_finally)
 
 
 // Resumption kinds: used to avoid allocation etc.
 typedef enum mpe_resumption_kind_e {
-  MPE_RESUMPTION_NEVER,
-  MPE_RESUMPTION_INPLACE,
-  MPE_RESUMPTION_SCOPED_ONCE,
-  MPE_RESUMPTION_ONCE,
+  MPE_RESUMPTION_INPLACE,           
+  MPE_RESUMPTION_SCOPED_ONCE,       
+  MPE_RESUMPTION_ONCE,              
   MPE_RESUMPTION_MULTI
 } mpe_resumption_kind_t;
 
@@ -179,7 +180,7 @@ public:
   }
 
   virtual const char* what() const throw() {
-    return "libmpeff: unwinding the stack; do not catch this exception!";
+    return "libmpeff: unwinding the stack -- do not catch this exception!";
   }
 };
 
@@ -195,6 +196,8 @@ static void mpe_unwind_to(mpe_frame_handle_t* target, const mpe_operation_t* op,
 }
 #endif
 
+
+// Simulate operation definition for resume_unwind
 MPE_DEFINE_EFFECT1(mpe_unwind, mpe_unwind);
 
 static void* mpe_handle_op_unwind(mpe_resume_t* r, void* local, void* arg) {
@@ -208,6 +211,7 @@ static mpe_operation_t mpe_op_unwind = {
   MPE_OPTAG(mpe_unwind,mpe_unwind),
   &mpe_handle_op_unwind
 };
+
 
 /*-----------------------------------------------------------------
   Effect and optag names
@@ -229,6 +233,7 @@ const char* mpe_optag_name(mpe_optag_t optag) {
 -----------------------------------------------------------------*/
 
 typedef struct mpe_perform_env_s {
+  mpe_resumption_kind_t rkind;
   mpe_opfun_t* opfun;
   void* local;
   void* oparg;
@@ -244,19 +249,29 @@ typedef struct mpe_resume_env_s {
 // Regular once resumption
 static void* mpe_perform_op_clause(mp_resume_t* mpr, void* earg) {
   mpe_perform_env_t* env = (mpe_perform_env_t*)earg;
-  mpe_resume_t* resume = mpe_malloc_tp(mpe_resume_t);
-  resume->kind = MPE_RESUMPTION_ONCE;
+  mpe_resume_t resume_stack;
+  mpe_resume_t* resume;
+  if (mpe_likely(env->rkind == MPE_RESUMPTION_SCOPED_ONCE)) {
+    resume = &resume_stack;
+  }
+  else {
+    resume = mpe_malloc_tp(mpe_resume_t);
+  }    
+  resume->kind = env->rkind;
   resume->mp.resume = mpr;
   return (env->opfun)(resume, env->local, env->oparg);
 }
 
-static void* mpe_perform_yield_to(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
+// Yield 
+static void* mpe_perform_yield_to(mpe_resumption_kind_t rkind, mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
   mpe_frame_t* resume_top = mpe_frame_top; // save current top
   mpe_frame_top = h->frame.parent;           // and unlink handlers
-  mpe_perform_env_t penv = { op->opfun, h->local, arg };
+  mpe_perform_env_t penv = { rkind, op->opfun, h->local, arg };
   // yield up
-  mpe_resume_env_t* renv = (mpe_resume_env_t*)mp_yield(h->prompt, &mpe_perform_op_clause, &penv);
-  // resumed!
+  mpe_resume_env_t* renv = (mpe_resume_env_t*)(mpe_likely(rkind < MPE_RESUMPTION_MULTI) 
+                                                ? mp_yield(h->prompt, &mpe_perform_op_clause, &penv)
+                                                : mp_myield(h->prompt, &mpe_perform_op_clause, &penv));
+  // resumed!                     
   h->local = renv->local;           // set new state
   h->frame.parent = mpe_frame_top;  // relink handlers
   mpe_frame_top = resume_top;
@@ -266,58 +281,6 @@ static void* mpe_perform_yield_to(mpe_frame_handle_t* h, const mpe_operation_t* 
   return renv->result;
 }
 
-// Multi-shot resumption
-static void* mpe_perform_op_clause_multi(mp_resume_t* mpr, void* earg) {
-  mpe_perform_env_t* env = (mpe_perform_env_t*)earg;
-  mpe_resume_t* resume = mpe_malloc_tp(mpe_resume_t);
-  //mpe_trace_message("alloc resume: %p\n", resume);
-  resume->kind = MPE_RESUMPTION_MULTI;
-  resume->mp.resume = mpr;
-  return (env->opfun)(resume, env->local, env->oparg);  
-}
-
-static void* mpe_perform_yield_to_multi(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
-  mpe_frame_t* resume_top = mpe_frame_top; // save current top
-  mpe_frame_top = h->frame.parent;           // and unlink handlers
-  mpe_perform_env_t penv = { op->opfun, h->local, arg };
-  // yield up
-  mpe_resume_env_t* renv = (mpe_resume_env_t*)mp_myield(h->prompt, &mpe_perform_op_clause_multi, &penv);
-  // resumed!
-  h->local = renv->local;         // set new state
-  h->frame.parent = mpe_frame_top;  // relink handlers
-  mpe_frame_top = resume_top;
-  if (renv->unwind) {
-    mpe_unwind_to(h, &mpe_op_unwind, renv->result);
-  }
-  return renv->result;
-}
-
-// Scoped-once resumption
-static void* mpe_perform_op_clause_scoped_once(mp_resume_t* mpr, void* earg) {
-  mpe_perform_env_t* env = (mpe_perform_env_t*)earg;
-  mpe_resume_t resume;
-  resume.kind = MPE_RESUMPTION_SCOPED_ONCE;
-  resume.mp.resume = mpr;
-  return (env->opfun)(&resume, env->local, env->oparg);
-}
-
-static void* mpe_perform_yield_to_scoped_once(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
-  mpe_frame_t* resume_top = mpe_frame_top; // save current top
-  mpe_frame_top = h->frame.parent;           // and unlink handlers
-  mpe_perform_env_t penv = { op->opfun, h->local, arg };
-  // yield up
-  mpe_resume_env_t* renv = (mpe_resume_env_t*)mp_yield(h->prompt, &mpe_perform_op_clause_scoped_once, &penv);
-  // resumed!
-  h->local = renv->local;         // set new state
-  h->frame.parent = mpe_frame_top;  // relink handlers
-  mpe_frame_top = resume_top;
-  if (renv->unwind) {
-    mpe_unwind_to(h, &mpe_op_unwind, renv->result);
-  }
-  return renv->result;
-}
-
-
 // Never resumption
 static void* mpe_perform_op_clause_abort(mp_resume_t* mpr, void* earg) {
   mpe_perform_env_t env = *((mpe_perform_env_t*)earg);  // copy out all args before dropping the prompt
@@ -326,10 +289,23 @@ static void* mpe_perform_op_clause_abort(mp_resume_t* mpr, void* earg) {
 }
 
 static void* mpe_perform_yield_to_abort(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
-  mpe_perform_env_t env = { op->opfun, h->local, arg };
+  mpe_perform_env_t env = { MPE_RESUMPTION_SCOPED_ONCE /* unused */, op->opfun, h->local, arg };
   return mp_yield(h->prompt, &mpe_perform_op_clause_abort, &env);
 }
 
+
+// Tail resumptive under an "under" frame
+static void* mpe_perform_under(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
+  mpe_frame_under_t f;
+  f.frame.effect = MPE_EFFECT(mpe_frame_under);
+  f.under = h->frame.effect;
+  void* result = NULL;
+  {mpe_with_frame(&f.frame) {
+    mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, { &h->local } };
+    result = (op->opfun)(&resume, h->local, arg);
+  }}
+  return result;
+}
 
 // ------------------------------------------------------------------------------
 // Perform
@@ -345,22 +321,13 @@ static void* mpe_perform_at(mpe_frame_handle_t* h, const mpe_operation_t* op, vo
   }
   else if (mpe_likely(opkind == MPE_OP_TAIL)) {
     // tail resumptive; execute in place under an "under" frame
-    mpe_frame_under_t f;
-    f.frame.ftype = MPE_FRAME_UNDER;
-    f.frame.effect = MPE_EFFECT(mpe_under);
-    f.under = h->frame.effect;
-    void* result = NULL;
-    {mpe_with_frame(&f.frame) {
-      mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, { &h->local } };
-      result = (op->opfun)(&resume, h->local, arg);
-    }}
-    return result;
+    return mpe_perform_under(h, op, arg);
   }
   else if (opkind == MPE_OP_SCOPED_ONCE) {
-    return mpe_perform_yield_to_scoped_once(h, op, arg);
+    return mpe_perform_yield_to(MPE_RESUMPTION_SCOPED_ONCE, h, op, arg);
   }
   else if (opkind == MPE_OP_ONCE) {
-    return mpe_perform_yield_to(h, op, arg);
+    return mpe_perform_yield_to(MPE_RESUMPTION_ONCE, h, op, arg);
   }
   else if (opkind == MPE_OP_NEVER) {
     mpe_unwind_to(h, op, arg);
@@ -370,11 +337,9 @@ static void* mpe_perform_at(mpe_frame_handle_t* h, const mpe_operation_t* op, vo
     return mpe_perform_yield_to_abort(h, op, arg);
   }
   else {
-    return mpe_perform_yield_to_multi(h, op, arg);    
+    return mpe_perform_yield_to(MPE_RESUMPTION_MULTI, h, op, arg);    
   }
 }
-
-
 
 static mpe_decl_noinline void* mpe_unhandled_operation(mpe_optag_t optag) {
   fprintf(stderr, "unhandled operation: %s\n", mpe_optag_name(optag));
@@ -383,28 +348,47 @@ static mpe_decl_noinline void* mpe_unhandled_operation(mpe_optag_t optag) {
 
 
 // Perform finds the innermost handler and performs the operation
-void* mpe_perform(mpe_optag_t optag, void* arg) {
+// note: this is performance sensitive code
+static mpe_frame_handle_t* mpe_find(mpe_optag_t optag) {
   mpe_frame_t* f = mpe_frame_top;
   mpe_effect_t opeff = optag->effect;
+  size_t mask_level = 0;
   while (mpe_likely(f != NULL)) {
     mpe_effect_t eff = f->effect;
+    // handle
     if (mpe_likely(eff == opeff)) {
-      // found the effect
-      mpe_frame_handle_t* h = (mpe_frame_handle_t*)f;
-      const mpe_operation_t* op = &h->hdef->operations[optag->opidx];
-      return mpe_perform_at(h, op, arg);      
+      if (mpe_likely(mask_level == 0)) {
+        return (mpe_frame_handle_t*)f;    // found our handler
+      }
+      else {
+        mask_level--;
+      }
     }
-    else if (mpe_unlikely(eff == MPE_EFFECT(mpe_under))) {
-      // skip to the matching handler of this `under` frame
+    // under
+    else if (mpe_unlikely(eff == MPE_EFFECT(mpe_frame_under))) {
       mpe_effect_t ueff = ((mpe_frame_under_t*)f)->under;
       do {
         f = f->parent;
       } while (f != NULL && f->effect != ueff);
       if (f == NULL) break;
     }
+    // mask
+    else if (mpe_unlikely(eff == MPE_EFFECT(mpe_frame_mask))) {
+      mpe_frame_mask_t* mf = (mpe_frame_mask_t*)f;
+      if (mpe_unlikely(mf->mask == opeff && mf->from <= mask_level)) {
+        mask_level++;
+      }
+    }
     f = f->parent;
   }
-  return mpe_unhandled_operation(optag);
+  return NULL;
+}
+
+void* mpe_perform(mpe_optag_t optag, void* arg) {
+  mpe_frame_handle_t* h = mpe_find(optag);
+  if (mpe_unlikely(h == NULL)) return mpe_unhandled_operation(optag);
+  const mpe_operation_t* op = &h->hdef->operations[optag->opidx];
+  return mpe_perform_at(h, op, arg);
 }
 
 
@@ -416,9 +400,9 @@ void* mpe_perform(mpe_optag_t optag, void* arg) {
 // Pass arguments down in a closure environment
 struct mpe_handle_start_env {
   const mpe_handlerdef_t* hdef;
-  void* local;
+  void*            local;
   mpe_actionfun_t* body;
-  void* arg;
+  void*            arg;
 };
 
 // Start a handler
@@ -428,8 +412,7 @@ static mpe_decl_noinline void* mpe_handle_start(mp_prompt_t* prompt, void* earg)
   mpe_frame_handle_t h;
   h.prompt = prompt;
   h.hdef = env->hdef;
-  h.local = env->local;
-  h.frame.ftype = MPE_FRAME_HANDLER;
+  h.local = env->local;  
   h.frame.effect = env->hdef->effect;
   void* result = NULL;
   #if MPE_HAS_TRY
@@ -550,4 +533,20 @@ void mpe_resume_release(mpe_resume_t* resume) {
       mp_resume_drop(mpr);
     }
   }
+}
+
+/*-----------------------------------------------------------------
+  Mask
+-----------------------------------------------------------------*/
+
+void* mpe_mask(mpe_effect_t eff, size_t from, mpe_actionfun_t* fun, void* arg) {
+  mpe_frame_mask_t f;
+  f.frame.effect = MPE_EFFECT(mpe_frame_mask);
+  f.mask = eff;
+  f.from = from;
+  void* result = NULL;
+  {mpe_with_frame(&f.frame) {
+    result = fun(arg);
+  }}
+  return result;
 }
