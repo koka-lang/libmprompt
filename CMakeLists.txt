@@ -11,13 +11,11 @@ option(MP_USE_C  "Build C versions of the library without exception support" OFF
 
 set(mp_version "0.1")
 
-set(mprompt_sources
-    src/mprompt/util.c
-    src/mprompt/gstack.c     # includes gstack-pool.c and gstack-win.c/gstack-mmap.c
-    src/mprompt/mprompt.c)
+set(mprompt_sources  src/mprompt/libmprompt.c)
+    # util.c gstack-pool.c gstack-win/mmap.c gstack.c mprompt.c
 
-set(mpeff_sources
-    src/mpeff/mpeff.c)
+set(mpeff_sources    src/mpeff/libmpeff.c)
+    # src/mpeff/mpeff.c
 
 set(test_sources
     test/util.c
@@ -162,7 +160,7 @@ if (APPLE)
   # target_link_options(mprompt PUBLIC -Wl,-no_keep_dwarf_unwind)
 endif()
 
-add_library(mpeff STATIC ${mpeff_sources})
+add_library(mpeff STATIC ${mpeff_sources} ${mprompt_asm_source})
 # set_property(TARGET mprompt PROPERTY POSITION_INDEPENDENT_CODE ON)
 set_target_properties(mpeff PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mpeff_name} )
 target_compile_definitions(mpeff PRIVATE MPE_STATIC_LIB)
@@ -171,11 +169,14 @@ target_include_directories(mpeff PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${mp_install_dir}/include>
 )
+if (NOT WIN32)
+  target_link_libraries(mpeff PUBLIC pthread)
+endif()
 
 add_executable(mptest ${test_sources})
 target_compile_options(mptest PRIVATE ${mp_cflags})
 target_include_directories(mptest PRIVATE include)
-target_link_libraries(mptest PRIVATE mpeff mprompt)
+target_link_libraries(mptest PRIVATE mpeff)
 target_link_options(mptest PUBLIC -flto)
 
 enable_testing()
