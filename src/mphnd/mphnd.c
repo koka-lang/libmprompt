@@ -73,9 +73,11 @@ typedef struct mph_handler_mask_s {
 } mph_handler_mask_t;
 
 
+/*
 static bool mph_is_prompt_handler(mph_handler_t* h) {
   return (h->prompt != NULL);
 }
+*/
 
 //---------------------------------------------------------------------------
 // Shadow stack
