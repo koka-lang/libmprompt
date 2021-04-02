@@ -56,7 +56,7 @@ static ssize_t os_gstack_cache_count      = 4;             // number of prompts 
 static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
 
 #if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be lower than the system stack)
-static ssize_t os_gpool_max_size          = 32 * MP_GIB;   // virtual size of one gstack pooled area (holds about 2^15 gstacks)
+static ssize_t os_gpool_max_size          = 16 * MP_GIB;   // virtual size of one gstack pooled area (holds about 2^15 gstacks)
 #else
 static ssize_t os_gpool_max_size          = 256 * MP_GIB;  // virtual size of one gstack pooled area (holds about 2^15 gstacks)
 #endif

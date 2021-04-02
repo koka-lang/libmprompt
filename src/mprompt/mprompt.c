@@ -71,7 +71,7 @@ struct mp_prompt_s {
   mp_return_point_t* return_point;  // return point in the parent (if not suspended..)
   mp_resume_point_t* resume_point;  // resume point for a suspended prompt chain. (the resume will be in the `top->gstack`)
 
-  mp_trap_frame_t* trap_frame;
+  mp_unwind_frame_t* unwind_frame;  // used to aid with unwinding on some platforms (windows only for now)
 };
 
 
@@ -174,7 +174,7 @@ mp_prompt_t* mp_prompt_create(void) {
   p->gstack = gstack;
   p->resume_point = NULL;
   p->return_point = NULL;
-  p->trap_frame = NULL;
+  p->unwind_frame = NULL;
   return p;
 }
 
@@ -226,7 +226,7 @@ static inline mp_resume_point_t* mp_prompt_link(mp_prompt_t* p, mp_return_point_
   p->top = NULL;
   if (ret != NULL) { p->return_point = ret; }                         
               else { mp_assert_internal(p->return_point != NULL); }  // used for tail resumes
-  mp_trap_frame_update(p->trap_frame,&ret->jmp);
+  mp_unwind_frame_update(p->unwind_frame,&ret->jmp);
   mp_assert_internal(mp_prompt_is_active(p));  
   return p->resume_point;
 }
@@ -257,22 +257,22 @@ typedef struct mp_entry_env_s {
   void* arg;
 } mp_entry_env_t;
 
-static  void mp_prompt_stack_entry(void* penv, mp_trap_frame_t* trap_frame) {
-  MP_UNUSED(trap_frame);
+static  void mp_prompt_stack_entry(void* penv, mp_unwind_frame_t* unwind_frame) {
+  MP_UNUSED(unwind_frame);
   mp_entry_env_t* env = (mp_entry_env_t*)penv;
   mp_prompt_t* p = env->prompt;
-  p->trap_frame = trap_frame;
+  p->unwind_frame = unwind_frame;
   //mp_prompt_stack_entry(p, env->fun, env->arg);
   #ifdef __cplusplus
   try {
   #endif
-      void* result = (env->fun)(p, env->arg);
-      // RET: return from a prompt
-      mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
-      ret->arg = result;
-      ret->fun = NULL;
-      ret->kind = MP_RETURN;
-      mp_longjmp(&ret->jmp);
+    void* result = (env->fun)(p, env->arg);
+    // RET: return from a prompt
+    mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
+    ret->arg = result;
+    ret->fun = NULL;
+    ret->kind = MP_RETURN;
+    mp_longjmp(&ret->jmp);
   #ifdef __cplusplus
   }
   catch (...) {

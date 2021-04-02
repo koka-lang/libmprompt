@@ -30,10 +30,10 @@
 // A register context. Always has `reg_ip` and `reg_sp` members.
 typedef struct mp_jmpbuf_s mp_jmpbuf_t;
 
-typedef struct mp_trap_frame_s mp_trap_frame_t;
-void mp_trap_frame_update(mp_trap_frame_t* tf, mp_jmpbuf_t* jmp);
+typedef struct mp_unwind_frame_s mp_unwind_frame_t;
+static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp);
 
-typedef void (mp_stack_start_fun_t)(void* arg, mp_trap_frame_t* trap_frame);
+typedef void (mp_stack_start_fun_t)(void* arg, mp_unwind_frame_t* unwind_frame);
 
 
 // Primitive functions in assembler 
@@ -83,13 +83,13 @@ struct mp_jmpbuf_s {
   uint16_t  context_padding;
 };
 
-#define MP_TRAP_FRAME_DEFINED  (1)
-typedef struct mp_trap_frame_s {
+#define MP_UNWIND_FRAME_DEFINED  (1)
+typedef struct mp_unwind_frame_s {
   void* sp;
   void* ip;
-} mp_trap_frame_t;
+} mp_unwind_frame_t;
 
-static inline void mp_trap_frame_update(mp_trap_frame_t* tf, mp_jmpbuf_t* jmp) {
+static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp) {
   if (tf != NULL) {
     tf->sp = (uint8_t*)jmp->reg_sp - 8;
     tf->ip = jmp->reg_ip;
@@ -148,12 +148,14 @@ struct mp_jmpbuf_s {
 #error "unsupported platform"
 #endif
 
-#if !MP_TRAP_FRAME_DEFINED
-typedef struct mp_trap_frame_s {
+// default definition of no trap frame is used
+#if !MP_UNWIND_FRAME_DEFINED
+typedef struct mp_unwind_frame_s {
   void* ip;
-} mp_trap_frame_t;
+} mp_unwind_frame_t;
 
-static inline void mp_trap_frame_update(mp_trap_frame_t* tf, mp_jmpbuf_t* jmp) {
+static inline void mp_unwind_frame_update(mp_trap_frame_t* tf, mp_jmpbuf_t* jmp) {
+  MP_UNUSED(tf); MP_UNUSED(jmp);
   // nothing
 }
 #endif
