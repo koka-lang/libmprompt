@@ -27,7 +27,9 @@
   at 0. Each entry at index `i` represents an available gstack at index `N - free[i] - i`:
   so the initial on-demand zero'd `free` stack makes all gstacks available in the pool :-)
   (The top index 0 is not used (reserved for the first block) so the for next index
-   `i==1` we get the gstack index `N-1` and going down from there.)
+   `i==1` we get the gstack index `N-1` and going down from there. We try to allocate
+    top-down to improve back traces in debuggers that often stop if the parent frame
+    has a lower address)
   From this free stack we can pop gstacks to use, or push back ones that are freed
   in a very efficient way. Moreover, reused gstacks do not need to be re-committed
   (and re-zero initialized by the OS).
