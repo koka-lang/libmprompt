@@ -45,6 +45,7 @@
 // gpool
 //----------------------------------------------------------------------------------
 #define MP_GPOOL_MAX_COUNT  (32000)         // at most INT16_MAX
+#define MP_GPOOL_GROWS_DOWN (1)
 
 typedef struct mp_gpool_s {
   struct mp_gpool_s* next;
@@ -158,7 +159,11 @@ static uint8_t* mp_gpool_allocx(uint8_t** stk, ssize_t* stk_size) {
       sp = gp->free_sp;
       if (sp < gp->block_count) {
         gp->free_sp = sp + 1;
+        #if MP_GPOOL_GROWS_DOWN
         block_idx = gp->block_count - gp->free[sp] - sp;   // block index is the count - value - sp, this way gp->free can be zero initialized !
+        #else
+        block_idx = gp->free[sp] + sp;
+        #endif
       }
     }
     mp_assert_internal(block_idx >= 0 && block_idx < gp->block_count);
@@ -223,7 +228,11 @@ static void mp_gpool_free(uint8_t* stk) {
         // push on free stack
         gp->free_sp--;
         sp = gp->free_sp;
+        #if MP_GPOOL_GROWS_DOWN
         idx = gp->block_count - block_idx - sp;
+        #else
+        idx = block_idx - sp;
+        #endif
         gp->free[sp] = (uint16_t)idx;
       }
       mp_assert(idx >= INT16_MIN && idx <= INT16_MAX);

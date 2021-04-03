@@ -174,7 +174,7 @@ mp_longjmp ENDP
 ; unwinding since the stack limits in the thread local TIB are not updated. For exceptions we will 
 ; need to catch and propagate manually through prompt points anyways). 
 ; Todo: currently we do not update the frame when the return point changes.
-mp_stack_enterx PROC 
+mp_stack_enter_trp PROC 
   mov     r10, rsp          ; save rsp in r10
   mov     r11, [r10]        ; rip     
   
@@ -204,7 +204,7 @@ mp_stack_enterx PROC
   push    rax
   push    r9                ; return point
   ; and fall through (with un-aligned stack)
-mp_stack_enterx ENDP
+mp_stack_enter_trp ENDP
 
 mp_stack_enter_trap PROC FRAME
 .PUSHFRAME code            ; unwind rsp - 48

@@ -84,6 +84,24 @@ struct mp_jmpbuf_s {
 };
 
 #define MP_UNWIND_FRAME_DEFINED  (1)
+#define MP_WIN_TRAP_FRAME (0)
+#if MP_WIN_TRAP_FRAME
+typedef struct mp_unwind_frame_s {
+  uintptr_t err;
+  void* ip;
+  void* cs;
+  uintptr_t eflags;
+  void* sp;
+  void* ss;
+} mp_unwind_frame_t;
+
+static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp) {
+  if (tf != NULL) {
+    tf->sp = jmp->reg_sp;
+    tf->ip = jmp->reg_ip;
+  }
+}
+#else
 typedef struct mp_unwind_frame_s {
   void* sp;
   void* ip;
@@ -95,7 +113,7 @@ static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jm
     tf->ip = jmp->reg_ip;
   }
 }
-
+#endif
 
 #elif defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__x86_64)
 
