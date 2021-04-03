@@ -201,11 +201,32 @@ mp_gstack_t* mp_gstack_alloc(void)
   
   // first look in our thread local cache..
   mp_gstack_t* g = _mp_gstack_cache;
+  #if defined(NDEBUG)
+  // pick the head if available
   if (g != NULL) {
     _mp_gstack_cache = g->next;
     _mp_gstack_cache_count--;
     g->next = NULL;
   }
+  #else
+  // only use a cached stack if it is under the parent stack (to help unwinding during debugging)
+  void* sp = (void*)&g;
+  mp_gstack_t* prev = NULL;
+  while (g != NULL) {
+    bool good = (os_stack_grows_down ? (void*)g < sp : sp < (void*)g);
+    if (good) {
+      if (prev == NULL) { _mp_gstack_cache = g->next; }
+                   else { prev->next = g->next; }
+      _mp_gstack_cache_count--;
+      g->next = NULL;
+      break;
+    }
+    else {
+      prev = g;
+      g = g->next;
+    }
+  }
+  #endif
 
   // otherwise allocate fresh
   if (g == NULL) {
