@@ -30,9 +30,12 @@
 // A register context. Always has `reg_ip` and `reg_sp` members.
 typedef struct mp_jmpbuf_s mp_jmpbuf_t;
 
+// On some platforms (like windows) we need an unwind frame on the stack that 
+// is updated inplace when the return_point changes so unwinding can find the right return address.
 typedef struct mp_unwind_frame_s mp_unwind_frame_t;
 static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp);
 
+// Start function on a stack
 typedef void (mp_stack_start_fun_t)(void* arg, mp_unwind_frame_t* unwind_frame);
 
 
@@ -45,14 +48,16 @@ mp_decl_externc                        void* mp_stack_enter(void* stack_base, vo
                                                             mp_stack_start_fun_t* fun, void* arg);
 
 
-#if defined(_WIN32) && defined(_M_X64)  // windows 64-bit
+// Register context definitions are platform specific
+
+// Windows AMD64
+#if defined(_WIN32) && defined(_M_X64)  
 
 typedef struct mp_xmm_s {
   uint64_t lo;
   uint64_t hi;
 } mp_xmm_t;
 
-#define MP_JMPBUF_SIZE 280
 struct mp_jmpbuf_s {
   void*     reg_ip;            
   void*     reg_sp;
@@ -86,8 +91,8 @@ struct mp_jmpbuf_s {
 // On windows we do not have dwarf expressions and need to update the return address
 // and stack pointer on the stack via the unwind frame.
 #define MP_UNWIND_FRAME_DEFINED  (1)
-#define MP_WIN_TRAP_FRAME (0)
-#if MP_WIN_TRAP_FRAME
+#define MP_WIN_USE_TRAP_FRAME    (0)
+#if MP_WIN_USE_TRAP_FRAME
 // use a machine trap frame: <https://www.amd.com/system/files/TechDocs/24593.pdf>, page 263.
 typedef struct mp_unwind_frame_s {
   uint64_t  err;
@@ -121,16 +126,16 @@ static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jm
 }
 #endif
 
+// AMD64 (Linux, macOS, BSD, etc)
 #elif defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__x86_64)
 
-# define MP_JMPBUF_SIZE 72
 struct mp_jmpbuf_s {
-  void*     reg_ip;            
+  void* reg_ip;
   int64_t   reg_rbx;
-  void*     reg_sp;
+  void* reg_sp;
   int64_t   reg_rbp;
   int64_t   reg_r12;
-  int64_t   reg_r13;  
+  int64_t   reg_r13;
   int64_t   reg_r14;
   int64_t   reg_r15;
   uint32_t  reg_mxcrs;
@@ -138,8 +143,8 @@ struct mp_jmpbuf_s {
   uint16_t  context_padding;
 };
 
+// ARM64, Aarch64
 #elif defined(_M_ARM64) || defined(__aarch64__)
-# define MP_JMPBUF_SIZE 192
 
 struct mp_jmpbuf_s {
   int64_t   reg_x18;
