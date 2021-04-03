@@ -57,9 +57,9 @@ Particular aspects:n
   ```
   run 10M connections with 10000 active at a time, each using 32kb stack...
   total stack used: 312500.000mb, count=10000000
-  elapsed: 1.158s, user: 1.109s, sys: 0.049s, rss: 42mb, main rss: 39mb
+  elapsed: 0.932s, user: 0.883s, sys: 0.049s, rss: 42mb, main rss: 39mb
   ```
-  This is about 8M "connections" per second (single threaded, Ubuntu 20, AMD5950X),
+  This is about 10M "connections" per second (single threaded, Ubuntu 20, AMD5950X),
   where each connection creates a fresh prompt and context switches 4 times.
 
 
