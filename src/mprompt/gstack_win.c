@@ -10,7 +10,7 @@
 -----------------------------------------------------------------------------*/
 #include <windows.h>
 #include <fibersapi.h>           // needed for thread termination <https://devblogs.microsoft.com/oldnewthing/20191011-00/?p=102989>
-
+#include "internal/atomic.h"
 
 // -----------------------------------------------------
 // Interface
@@ -24,15 +24,29 @@ static const char* mp_system_error_message(int errno, const char* fmt, ...);
 
 // Reserve memory
 // we use a hint address in windows to try to stay under the system stack for better backtraces
-static uint8_t* mp_os_reserve_hint = (uint8_t*)(32 * MP_GIB);
+static _Atomic(ssize_t) mp_os_reserve_hint;
 
 static uint8_t* mp_os_mem_reserve(ssize_t size) {
   uint8_t* p = NULL;
-  if (mp_os_reserve_hint != NULL) {  
-    uint8_t* hint = mp_os_reserve_hint;
-    mp_os_reserve_hint += mp_align_up(size, MP_MIB); // data race ok as it is just a hint
-    p = (uint8_t*)VirtualAlloc(mp_os_reserve_hint, size, MEM_RESERVE, PAGE_NOACCESS);    
+  ssize_t rsize = mp_align_up(size, 64 * MP_KIB);  
+  ssize_t hint  = mp_atomic_load(&mp_os_reserve_hint);
+  // initialize
+  if (hint == 0) {
+    hint = (ssize_t)&hint - 64 * MP_MIB;  // place lower as the system stack (and use ASLR from the stack)
+    hint = mp_align_down(hint, 64 * MP_KIB);
+    ssize_t expected = 0;
+    if (!mp_atomic_cas(&mp_os_reserve_hint, &expected, hint)) { 
+      hint = expected;
+    }
   }
+  // try placing under the system stack (for better backtraces)
+  if (hint > rsize && hint > MP_GIB) {  
+    ssize_t hint = mp_atomic_add(&mp_os_reserve_hint, -rsize) - rsize;      // race is ok, it is just a hint
+    if (hint > 0) {
+      p = (uint8_t*)VirtualAlloc((void*)hint, size, MEM_RESERVE, PAGE_NOACCESS);
+    }
+  }
+  // otherwise allocation determined by OS
   if (p == NULL) {
     p = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
   }
