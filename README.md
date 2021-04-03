@@ -509,7 +509,12 @@ Here a breakpoint was set in code that was resumed
 where the backtrace continues into the main stack. This is quite nice
 for debugging compared to callback based programming for example.
 
-(Unfortunately, full backtraces are not yet working on Windows with Visual Studio).
+Here is a backtrace in the Visual Studio debugger:
+
+<img src="doc/backtrace3.jpg" width=600px>
+
+(Unfortunately, on Windows, in rare cases a backtrace can still be cut short 
+when libmprompt is unable to place a gstack at a lower address as its parent.)
 
 
 ## The libmpeff Interface
