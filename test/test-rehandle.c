@@ -20,7 +20,7 @@ static void* exit_handle(mpe_actionfun_t action, void* arg) {
 
 
 // Ask twice with an exit_capture in between
-static void* body(void* arg) {
+static void* rehandle_body(void* arg) {
   UNUSED(arg); 
   long x = reader_ask();   // return 1
   exit_capture();          // exit and resume under a new reader
@@ -29,7 +29,7 @@ static void* body(void* arg) {
 }
 
 static void* with_exit_handle(void* arg) {
-  return exit_handle(&body, arg);
+  return exit_handle(&rehandle_body, arg);
 }
 
 static void* with_resume(void* arg) {
