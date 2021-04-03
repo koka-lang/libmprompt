@@ -83,16 +83,21 @@ struct mp_jmpbuf_s {
   uint16_t  context_padding;
 };
 
+// On windows we do not have dwarf expressions and need to update the return address
+// and stack pointer on the stack via the unwind frame.
 #define MP_UNWIND_FRAME_DEFINED  (1)
 #define MP_WIN_TRAP_FRAME (0)
 #if MP_WIN_TRAP_FRAME
+// use a machine trap frame: <https://www.amd.com/system/files/TechDocs/24593.pdf>, page 263.
 typedef struct mp_unwind_frame_s {
-  uintptr_t err;
-  void* ip;
-  void* cs;
-  uintptr_t eflags;
-  void* sp;
-  void* ss;
+  uint64_t  err;
+  void*     ip;
+  uint32_t  cs;
+  uint32_t  padding1;
+  uint64_t  eflags;
+  void*     sp;
+  uint32_t  ss;
+  uint32_t  padding2;
 } mp_unwind_frame_t;
 
 static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp) {
@@ -102,6 +107,7 @@ static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jm
   }
 }
 #else
+// use our own "mini" frame; just a saved rsp with rip. 
 typedef struct mp_unwind_frame_s {
   void* sp;
   void* ip;
@@ -109,7 +115,7 @@ typedef struct mp_unwind_frame_s {
 
 static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp) {
   if (tf != NULL) {
-    tf->sp = (uint8_t*)jmp->reg_sp - 8;
+    tf->sp = (uint8_t*)jmp->reg_sp - 8;  // adjust as the unwinder adds 8 (to pop the return address)
     tf->ip = jmp->reg_ip;
   }
 }
@@ -166,13 +172,13 @@ struct mp_jmpbuf_s {
 #error "unsupported platform"
 #endif
 
-// default definition of no trap frame is used
+// default definition of if no unwind frame is used
 #if !MP_UNWIND_FRAME_DEFINED
 typedef struct mp_unwind_frame_s {
   void* ip;
 } mp_unwind_frame_t;
 
-static inline void mp_unwind_frame_update(mp_trap_frame_t* tf, mp_jmpbuf_t* jmp) {
+static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp) {
   MP_UNUSED(tf); MP_UNUSED(jmp);
   // nothing
 }
