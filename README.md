@@ -110,7 +110,7 @@ Some known issues are:
   or set the debugger to ignore them (enter `handle SIGSEGV nostop` in `gdb`).
   
 - `lldb` on macOS is unable to continue after a demand-page `SEGV`
-  due to a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868).
+  (we believe this is due to this long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868)).
   A workaround is to set the gstack initial commit high enough to avoid 
   demand paging during debugging (use `config.stack_initial_commit=64*1024L;` for [example](test/main.c#L30)).
 
