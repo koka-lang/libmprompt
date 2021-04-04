@@ -14,7 +14,7 @@
   Show dynamic backtraces (just testing unwinding through prompts)
 -----------------------------------------------------------------------------*/
 
-#define SHOW_BACKTRACE  1
+#define SHOW_BACKTRACE  0
 #define USE_LIB_UNWIND  1
 
 #if SHOW_BACKTRACE  // show dynamic backtrace
