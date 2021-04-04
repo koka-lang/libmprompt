@@ -126,13 +126,13 @@ mp_longjmp:                  /* rdi: jmp_buf */
 _mp_stack_enter:
 mp_stack_enter:  
   .cfi_startproc 
-  .cfi_remember_state
   .cfi_signal_frame           /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
 
   /* save rcx on the stack so it is always available during unwinding */
   pushq    %rcx
   .cfi_adjust_cfa_offset 8
-  .cfi_rel_offset rcx, 0
+  /* .cfi_rel_offset rcx, 0 */  
+  .cfi_remember_state
   
   /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 
      the previous registers can now be restored (during unwind) using .cfi_offset directives */
@@ -145,7 +145,6 @@ mp_stack_enter:
   .cfi_offset r13, 40
   .cfi_offset r14, 48
   .cfi_offset r15, 56
-  .cfi_return_column rip
 
   /* switch stack; push rip + rcx to mimic the old stack for the dwarf expression above */
   movq    8(%rsp), %rax       /* old rip */  
@@ -167,8 +166,9 @@ mp_stack_enter:
   callq   abort
   #endif
 
-  movq    %rsp, %rdi          /* load indirect jmpbuf_t* and longjmp */
+  .cfi_restore_state
+  popq    %rdi              /* load indirect jmpbuf_t* and longjmp */
   movq    (%rdi), %rdi
   jmp     mp_longjmp        
-  .cfi_restore_state
+
   .cfi_endproc
