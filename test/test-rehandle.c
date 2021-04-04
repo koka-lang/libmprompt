@@ -11,10 +11,13 @@
 #include "test.h"
 
 /* ---------------------------------------------------------------------------
-  Show dynamic backtraces
+  Show dynamic backtraces (just testing unwinding through prompts)
 -----------------------------------------------------------------------------*/
 
-#if 0  // show dynamic backtrace
+#define SHOW_BACKTRACE  0
+#define USE_LIB_UNWIND  0
+
+#if SHOW_BACKTRACE  // show dynamic backtrace
 #include <mprompt.h>
 
 #if defined(_WIN32)
@@ -23,6 +26,7 @@
 #pragma comment(lib,"dbghelp")
 static HANDLE current_process = INVALID_HANDLE_VALUE;
 static void print_backtrace(const char* msg) {
+  fprintf(stderr,"-----------------------------\n");
   fprintf(stderr, "backtrace at: %s\n", msg);
   void* bt[128];
   int n = mp_backtrace(bt, 128);
@@ -42,13 +46,41 @@ static void print_backtrace(const char* msg) {
     }
   }
   free(info);
+  fprintf(stderr,"\n");
+}
+
+#elif USE_LIB_UNWIND
+// edit the cmake to link the mptest target with libunwind; install as: 
+// $ sudo apt-get install libunwind-dev
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
+
+static void print_backtrace(const char* msg) {
+  fprintf(stderr,"-----------------------------\n");
+  fprintf(stderr, "libunwind backtrace at: %s\n", msg);
+  unw_cursor_t cursor; unw_context_t uc;
+  
+  unw_getcontext(&uc);
+  unw_init_local(&cursor, &uc);
+  int i = 0;
+  while (unw_step(&cursor) > 0) {
+    unw_word_t ip;
+    unw_get_reg(&cursor, UNW_REG_IP, &ip);
+    char name[128];
+    unw_word_t ofs;
+    unw_get_proc_name(&cursor, name, 128, &ofs);
+    printf ("frame %2d: %8p: %s at offset %ld\n", i, (void*)ip, name, ofs);
+    i++;
+  }
+  fprintf(stderr,"\n");
 }
 
 #else
 
-// unix
+// posix
 #include <execinfo.h>
 static void print_backtrace(const char* msg) {
+  fprintf(stderr,"-----------------------------\n");
   fprintf(stderr, "backtrace at: %s\n", msg);
   void* bt[128];
   int n = mp_backtrace(bt,128);
