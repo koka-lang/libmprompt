@@ -192,6 +192,11 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
 // Init/Done
 //--------------------------------------------------
 
+static void  mp_gpools_process_init(void);
+static void  mp_gpools_process_done(void);
+static void  mp_gpools_thread_init(void);
+
+
 #if defined(__linux__)
 static bool mp_linux_use_overcommit(void) {
   int open_flags = O_RDONLY;
@@ -217,12 +222,9 @@ static void mp_pthread_done(void* value) {
 
 static void mp_gstack_os_thread_init() {
   pthread_setspecific(mp_pthread_key, (void*)(1));  // set to non-zero value
-  // macOS thread init
+  mp_gpools_thread_init();
   mp_os_mach_thread_init();  
 }
-
-static void  mp_gpools_process_init(void);
-static void  mp_gpools_process_done(void);
 
 static bool mp_gstack_os_init(void) {
   // get the page size
