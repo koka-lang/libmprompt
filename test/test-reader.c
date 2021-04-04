@@ -5,10 +5,11 @@
   found in the "LICENSE" file at the root of this distribution.
 -----------------------------------------------------------------------------*/
 #include "test.h"
-
-
+   
 static long stack_use(uint8_t* p, long kb) {
-  if (kb <= 4) return reader_ask();
+  if (kb <= 4) {    
+    return reader_ask();
+  }
 
   if (p != NULL) p[4095] = 1;
   uint8_t arr[4096];

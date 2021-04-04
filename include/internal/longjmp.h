@@ -91,7 +91,7 @@ struct mp_jmpbuf_s {
 // On windows we do not have dwarf expressions and need to update the return address
 // and stack pointer on the stack via the unwind frame.
 #define MP_UNWIND_FRAME_DEFINED  (1)
-#define MP_WIN_USE_TRAP_FRAME    (0)
+#define MP_WIN_USE_TRAP_FRAME    (1)
 #if MP_WIN_USE_TRAP_FRAME
 // use a machine trap frame: <https://www.amd.com/system/files/TechDocs/24593.pdf>, page 263.
 typedef struct mp_unwind_frame_s {

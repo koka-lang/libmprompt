@@ -170,19 +170,18 @@ mp_longjmp ENDP
 ; - gs:5240 the stack guarantee; set to limit on entry
 ; Before a call, we need to reserve 32 bytes of shadow space for the callee to spill registers in.
 
-; Push a trap frame so it can be unwound for a backtrace. (This is not quite enough for exception
-; unwinding since the stack limits in the thread local TIB are not updated. For exceptions we will 
-; need to catch and propagate manually through prompt points anyways). 
-; Todo: currently we do not update the frame when the return point changes.
-mp_stack_enter_trp PROC 
-  mov     r10, rsp          ; save rsp in r10
-  mov     r11, [r10]        ; rip     
+; Push a machine trap frame so it can be unwound for a backtrace in the debugger. 
+; (This is not quite enough for full exception unwinding since the stack limits in the thread local 
+;  TIB are not updated. For exceptions we will need to catch and propagate manually through prompt points anyways). 
+mp_stack_enter PROC FRAME
+  mov     r10, rsp          ; save rsp in r10 (used to access arguments later on)
+  mov     rax, [rsp]        ; rip     
   
   ; switch stack
   and     rcx, NOT 15       ; align
   mov     rsp, rcx
   
-  push    r11               ; simulate call for unwinding
+  push    rax               ; simulate call for unwinding
 
   ; for the trap frame, we only need to set rsp and rip:
   ; <https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64>
@@ -192,21 +191,16 @@ mp_stack_enter_trp PROC
   ; RSP+16  CS              ; we use stack reserved size (deallocation limit)
   ; RSP+8   RIP  
   ; RSP+0   error code      ; we use the return jmpbuf_t**
-  push    rcx
-  ;lea     rax, [r10+8]      ; return rsp (minus return address)
-  mov     r11, [r9]
-  mov     rax, [r11+8]
+  push    rcx               ; stack base (field:SS)
+  mov     r11, [r9]         ; load current jmpbut_t* 
+  mov     rax, [r11+8]      ; return rsp
   push    rax               
-  push    rdx
-  push    r8
-  ;push    r11               ; return rip
-  mov     rax, [r11]
+  push    rdx               ; stack commit limit (field:EFLAGS)
+  push    r8                ; stack reserved     (field:CS)
+  mov     rax, [r11]        ; return rip
   push    rax
-  push    r9                ; return point
-  ; and fall through (with un-aligned stack)
-mp_stack_enter_trp ENDP
+  push    r9                ; return point (field:error code)
 
-mp_stack_enter_trap PROC FRAME
 .PUSHFRAME code            ; unwind rsp - 48
   sub     rsp, 40          ; reserve home area for calls + align
 .ALLOCSTACK 40    
@@ -224,14 +218,15 @@ mp_stack_enter_trap PROC FRAME
   ; we should never reach this...
   call    abort           
 
-  mov     rcx, [rsp+40]    ; load jmpbuf_t*
+  mov     rcx, [rsp+40]    ; load jmpbuf_t* 
   mov     rcx, [rcx]
-  jmp     mp_longjmp       ; and longjmp
+  jmp     mp_longjmp       ; and longjmp back to the current return point
 
-mp_stack_enter_trap ENDP
+mp_stack_enter ENDP
 
 ; version without machine frame using our own "mini trap frame" of just rsp+rip
-mp_stack_enter PROC FRAME 
+; works in vs2019 but not in windbg
+mp_stack_enter_mini PROC FRAME 
   mov     r10, rsp         ; old rsp
   mov     r11, [rsp]       ; rip
 .PUSHREG rsp  
@@ -265,7 +260,7 @@ mp_stack_enter PROC FRAME
   mov     rcx, [rcx]       
   jmp     mp_longjmp
 
-mp_stack_enter ENDP
+mp_stack_enter_mini ENDP
 
 
 END
