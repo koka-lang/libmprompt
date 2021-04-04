@@ -14,8 +14,8 @@
   Show dynamic backtraces (just testing unwinding through prompts)
 -----------------------------------------------------------------------------*/
 
-#define SHOW_BACKTRACE  0
-#define USE_LIB_UNWIND  1
+#define SHOW_BACKTRACE  1
+#define USE_LIB_UNWIND  0
 
 #if SHOW_BACKTRACE  // show dynamic backtrace
 #include <mprompt.h>
@@ -49,7 +49,8 @@ static void print_backtrace(const char* msg) {
   fprintf(stderr,"\n");
 }
 
-#elif USE_LIB_UNWIND && !defined(__MACH__)
+#elif USE_LIB_UNWIND 
+// if not on macOS: 
 // edit the cmake to link the mptest target with libunwind:
 //   target_link_libraries(mpeff PUBLIC pthread)  ==> target_link_libraries(mpeff PUBLIC pthread unwind)
 // install as: 
@@ -71,9 +72,15 @@ static void print_backtrace(const char* msg) {
     char name[128];
     unw_word_t ofs;
     unw_get_proc_name(&cursor, name, 128, &ofs);
-    printf ("frame %2d: %8p: %s at offset %ld\n", i, (void*)ip, name, ofs);
+    
+    printf ("frame %2d: %8p: %s at offset %llu\n", i, (void*)ip, name, ofs);
     i++;
-    //if (strcmp(name,"_mp_stack_enter") == 0) break;
+    if (false) { //strcmp(name,"mp_stack_enter") == 0) {
+      unw_proc_info_t pinfo;
+      unw_get_proc_info(&cursor,&pinfo);
+      bool sig = unw_is_signal_frame(&cursor);
+      printf("signal: %i\n", sig);
+    }
   }
   fprintf(stderr,"\n");
 }

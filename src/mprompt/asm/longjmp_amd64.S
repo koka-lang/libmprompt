@@ -121,7 +121,7 @@ mp_longjmp:                  /* rdi: jmp_buf */
 #define DW_REG_rbp                6
 #define DW_REG_rsp                7
 
-/* .cfi_sections .debug_frame  */
+/* .cfi_sections .debug_frame */
 
 _mp_stack_enter:
 mp_stack_enter:  
@@ -131,7 +131,6 @@ mp_stack_enter:
   /* save rcx on the stack so it is always available during unwinding */
   pushq    %rcx
   .cfi_adjust_cfa_offset 8
-  /* .cfi_rel_offset rcx, 0 */  
   .cfi_remember_state
   
   /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 

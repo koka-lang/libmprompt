@@ -596,7 +596,7 @@ static void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
 
 #include <windows.h>
 // On windows, CaptureStackBackTrace only captures to the first prompt 
-// (probaly due to stack extent checks stored in the TIB?). 
+// (probably due to stack extent checks stored in the TIB?). 
 // To return a proper backtrace, we can yield up to each parent prompt and 
 // recursively capture partial backtraces at each point.
 typedef struct mp_yield_backtrace_env_s {
@@ -632,12 +632,12 @@ int mp_backtrace(void** bt, int len) {
 
 #elif defined(__MACH__)
 
-// On macOS, the standard backtrace and unwind also do not
-// cross the prompt boundaries (despite proper dwarf info).
+// On macOS, standard backtrace fails cross the prompt boundaries (despite proper dwarf info).
 // We use a similar strategy as on windows recursively yielding up and 
-// capturing backtraces per prompt.
-// Todo: check if this can be fixed using a base pointer in `mp_stack_enter`?
+// capturing backtraces per prompt using the standard unwind provided on macOS.
+// Note, we could just unwind directly but that is not always working in release mode.
 
+#define UNW_LOCAL_ONLY
 #include <libunwind.h>
 
 typedef struct mp_yield_backtrace_env_s {
@@ -665,7 +665,7 @@ static int mp_mach_unw_backtrace(void** bt, int len, int skip) {
     if (skip > 0) {
       skip--;
     }
-    else {
+    else {     
       bt[count++] = (void*)ip;
     }
     unw_proc_info_t pinfo;

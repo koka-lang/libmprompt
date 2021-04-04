@@ -130,10 +130,10 @@ static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jm
 #elif defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__x86_64)
 
 struct mp_jmpbuf_s {
-  void* reg_ip;
+  void*     reg_ip;
   int64_t   reg_rbx;
-  void* reg_sp;
-  int64_t   reg_rbp;
+  void*     reg_sp;
+  void*     reg_rbp;
   int64_t   reg_r12;
   int64_t   reg_r13;
   int64_t   reg_r14;
@@ -142,6 +142,7 @@ struct mp_jmpbuf_s {
   uint16_t  reg_fpcr;
   uint16_t  context_padding;
 };
+
 
 // ARM64, Aarch64
 #elif defined(_M_ARM64) || defined(__aarch64__)

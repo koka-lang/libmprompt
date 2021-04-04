@@ -48,6 +48,10 @@
 //----------------------------------------------------------------------------------
 #define MP_GPOOL_MAX_COUNT  (32000)         // at most INT16_MAX
 
+static inline bool mp_gpool_grows_down(void) {
+  return os_stack_grows_down;               // separate definition so we can debug reverse allocation
+}
+
 typedef struct mp_gpool_s {
   struct mp_gpool_s* next;
   ssize_t  full_size;       // full mmap'd reserved size
@@ -165,7 +169,7 @@ static uint8_t* mp_gpool_allocx(uint8_t** stk, ssize_t* stk_size) {
         block_idx = gp->free[sp] + sp;
       }
     }
-    if (os_stack_grows_down) {
+    if (mp_gpool_grows_down()) {
       block_idx = gp->block_count - block_idx; // grow from top
     }
     mp_assert_internal(block_idx >= 0 && block_idx < gp->block_count);
@@ -219,7 +223,7 @@ static void mp_gpool_free(uint8_t* stk) {
       mp_assert(block_idx > 0); if (block_idx == 0) return;
       mp_assert(block_idx < gp->block_count); if (block_idx >= gp->block_count) return;
       ptrdiff_t idx;
-      if (os_stack_grows_down) {
+      if (mp_gpool_grows_down()) {
         idx = gp->block_count - block_idx; // reverse if growing down
       }
       else {
