@@ -24,15 +24,17 @@
 
   The mp_gpool_t has a "free stack" itself (`free`) consisting of N (~32000) `int16_t`
   indices which are demand initialized to zero. The top of the stack starts
-  at 0. Each entry at index `i` represents an available gstack at index `N - free[i] - i`:
+  at 0. Each entry at index `i` represents an available gstack at index `free[i] + i`:
   so the initial on-demand zero'd `free` stack makes all gstacks available in the pool :-)
-  (The top index 0 is not used (reserved for the first block) so the for next index
-   `i==1` we get the gstack index `N-1` and going down from there. We try to allocate
-    top-down to improve back traces in debuggers that often stop if the parent frame
-    has a lower address)
+
   From this free stack we can pop gstacks to use, or push back ones that are freed
   in a very efficient way. Moreover, reused gstacks do not need to be re-committed
   (and re-zero initialized by the OS).
+
+  note: when the stack grows down, we modiy the index to allocate gstacks in 
+  reverse; i.e. the entry at index `i` represents an available gstack at `N - (free[i] + i)`.
+  On Windows backtraces only work if the parent of a gstack is at a higher
+  address and this strategy will help to ensure this is often the case.
 
   Since the gpool list is global we use a small spinlock for thread-safe
   allocation and free.
@@ -74,6 +76,9 @@ static mp_gpool_t* mp_gpool_next(const mp_gpool_t* gp) {
 }
 
 // Is a pointer located in a stack page and thus can be made accessible?
+// This method is the reason way we need gpools: it allows us to reliably (and efficiently)
+// determine if a given address is inside a gstack or not and can be made accessible (or not).
+//
 // This routine is called from the pagefault signal handler to verify if 
 // the address is in one of our stacks and is allowed to be committed.
 static mp_access_t mp_gpools_check_access(void* p, ssize_t* available, const mp_gpool_t** gpool) {
@@ -168,9 +173,6 @@ static uint8_t* mp_gpool_allocx(uint8_t** stk, ssize_t* stk_size) {
       if (block_idx >= gp->block_count) return NULL; // paranoia
       uint8_t* p = ((uint8_t*)gp + (block_idx * gp->block_size));
       //mp_trace_message("gpool_alloc: gp: %p, p: %p, block_idx: %zd, sp: %zd\n", gp, p, block_idx, sp);
-      //try to make the initial stack commit accessible (to avoid handling as grow signal)
-      //uint8_t* top = (os_stack_grows_down ? p + (gp->block_size - gp->gap_size - os_gstack_initial_commit) : p); 
-      //mp_mem_os_commit(top, os_gstack_initial_commit);  // ok if it fails
       *stk = p;
       *stk_size = gp->block_size - gp->gap_size;
       return p;

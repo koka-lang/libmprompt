@@ -32,13 +32,14 @@ static void mp_os_mach_process_init(void);
 #include <mach/mach_port.h>   // mach_port_t
 #include <mach/mach_init.h>   // mach_thread_self
 #include <mach/thread_act.h>  // task_swap_exception_ports
-
+#include <sys/sysctl.h>
 
 //--------------------------------------------------------------------------
 // Generate the following two request- and reply structures using
 // $ mig -v mach/mach_exc.defs
 // and extract it from `mach_exc.h`
 // (We cannot use `mach/exc.h` as that is 32-bit only).
+// todo: can we simplify/avoid this code ?
 //--------------------------------------------------------------------------
 #ifdef  __MigPackStructs
 #pragma pack(push, 4)
@@ -114,7 +115,7 @@ static void* mp_mach_exc_thread_start(void* arg) {
       //mp_trace_message("mach: received exception port message %i\n", req.code[0]);
       if (req.code[0] == KERN_PROTECTION_FAILURE) {  // == EXC_BAD_ACCESS
         void* address = (void*)req.code[1];
-        // And call our commit-on-demand handler to see if we can provide access.
+        // And call our commit-on-demand handler to reliably provide access if the address is in one of our gstacks
         if (mp_gpools_commit_on_demand(address)) {
           //mp_trace_message("  resolved bad acsess at %p\n", address);
           mp_mach_reply(&req, KERN_SUCCESS);  // resolved!
@@ -140,33 +141,30 @@ static void* mp_mach_exc_thread_start(void* arg) {
 
 // Set the thread-local exception port to use our (process wide) exception thread
 static void mp_os_mach_thread_init(void) {
-  exception_mask_t prev_em;
-  mach_msg_type_number_t prev_ec;  
-  mach_port_t prev_ep;
-  exception_behavior_t prev_b;
-  thread_state_flavor_t prev_f; 
-  if (thread_swap_exception_ports(mach_thread_self(), EXC_MASK_BAD_ACCESS, mp_mach_exc_port,
-                                   (EXCEPTION_STATE_IDENTITY | MACH_EXCEPTION_CODES), MACHINE_THREAD_STATE,
-                                   &prev_em, &prev_ec, &prev_ep, &prev_b, &prev_f) != KERN_SUCCESS) {
-    mp_error_message(EINVAL, "unable to set exception port on thread\n");
-    return;
-  } 
-  //mp_trace_message("thread mach exception ports initialized\n"); 
+  if (mp_mach_exc_port != MACH_PORT_NULL) {
+    if (thread_set_exception_ports(mach_thread_self(), EXC_MASK_BAD_ACCESS, mp_mach_exc_port,
+                                    (EXCEPTION_STATE_IDENTITY | MACH_EXCEPTION_CODES), MACHINE_THREAD_STATE) != KERN_SUCCESS) {
+      mp_error_message(EINVAL, "unable to set exception port on thread\n");
+    } 
+  }
 }
 
 // Check if we are running under a debugger
+// <https://stackoverflow.com/questions/2200277/detecting-debugger-on-mac-os-x>
 static bool mp_os_mach_in_debugger(void) {
-	struct kinfo_proc info = { 0 };
-  int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid() };
+	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid() };
+  struct kinfo_proc info = { };
   size_t size = sizeof(info);
-	sysctl(mib, 4, &info, &size, NULL, 0);
-	return ((info.kp_proc.p_flag & P_TRACED) != 0);
+	if (sysctl(mib, 4, &info, &size, NULL, 0) == 0) {
+    return ((info.kp_proc.p_flag & P_TRACED) != 0);
+  }
+  return false;
 }
 
 // Initialize process. (should be called at most once at process start)
 static void mp_os_mach_process_init(void) {
   // Only set up a mach exception handler if we are running under a debugger
-  if (!mp_os_mach_in_debugger()) return;
+  if (!mp_os_mach_in_debugger() || !os_use_gpools) return;
 
   // Create a single exception handler thread to handles EXC_BAD_ACCESS (before the debugger gets it)
   mach_port_t port = mach_task_self();
@@ -187,9 +185,9 @@ static void mp_os_mach_process_init(void) {
 
 err:
   if (mp_mach_exc_port != MACH_PORT_NULL) {
-    mach_post_deallocate(port, mp_mach_exc_port);
+    mach_port_deallocate(port, mp_mach_exc_port);
     mp_mach_exc_port = MACH_PORT_NULL;
   }
 }
 
-#endif // !NDEBUG && __MACH__
+#endif // __MACH__

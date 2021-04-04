@@ -18,7 +18,7 @@
 // We need atomic operations for the `gpool` on systems that do not have overcommit.
 #include "internal/atomic.h"
 
-// forward declaration
+// forward declaration 
 static bool mp_gpools_commit_on_demand(void* addr);
 
 // macOS in debug mode needs an exception port handler 
