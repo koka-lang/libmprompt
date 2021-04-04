@@ -14,7 +14,7 @@
   Show dynamic backtraces
 -----------------------------------------------------------------------------*/
 
-#if 1  // show dynamic backtrace
+#if 0  // show dynamic backtrace
 #include <mprompt.h>
 
 #if defined(_WIN32)
