@@ -600,3 +600,58 @@ void mp_init(mp_config_t* config) {
   // mp_throw_prepare();
   mp_gstack_init(config);
 }
+
+
+
+//-----------------------------------------------------------------------
+// Backtrace
+//-----------------------------------------------------------------------
+
+#if defined(_WIN32)
+
+#include <windows.h>
+// On windows, CaptureStackBackTrace only captures to the first prompt 
+// (probaly due to stack extent checks stored in the TIB?). 
+// To make it work, we can just yield up to each parent prompt and 
+// recursively capture partial backtraces at each point.
+typedef struct mp_yield_backtrace_env_s {
+  void** bt;
+  int    len;
+} mp_yield_backtrace_env_t;
+
+static int mp_win_backtrace(void** bt, int len, int skip);
+
+static void* mp_yield_backtrace(mp_resume_t* resume, void* envarg) {
+  mp_yield_backtrace_env_t* env = (mp_yield_backtrace_env_t*)envarg;
+  intptr_t n = mp_win_backtrace(env->bt, env->len, 1 /* don't include yield_backtrace */);
+  return mp_resume_tail(resume, (void*)n);
+}
+
+static int mp_win_backtrace(void** bt, int len, int skip) {
+  if (len <= 0) return 0; // done
+  int n = (int)CaptureStackBackTrace(skip + 1 /* don't include our own frame */, len, bt, NULL);
+  if (n <= 0 || n >= len) return n;
+  // check if we have more parent frames in a parent prompt
+  mp_prompt_t* p = mp_prompt_top();
+  if (p == NULL) return n;  // no more frames available
+  // yield recursively up to get more frames
+  mp_yield_backtrace_env_t env = { bt + n, len - n };
+  intptr_t m = (intptr_t)mp_yield(p, &mp_yield_backtrace, &env);
+  mp_assert_internal(m + n <= len);
+  return (int)(n + m);
+}
+
+int mp_backtrace(void** bt, int len) {
+  return mp_win_backtrace(bt, len, 1 /* don't include mp_backtrace */ );
+}
+
+#else
+
+// macOS, Linux, etc. 
+// Unwinding works as is (due to reliable dwarf unwind info and no stack limits in the thread local data)
+#include <execinfo.h>
+int mp_backtrace(void** bt, int len) {
+  return backtrace(bt, len);
+}
+
+#endif

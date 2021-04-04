@@ -1,11 +1,57 @@
+/* ---------------------------------------------------------------------------
+  Copyright (c) 2021, Microsoft Research, Daan Leijen
+  This is free software; you can redistribute it and/or modify it
+  under the terms of the MIT License. A copy of the license can be
+  found in the "LICENSE" file at the root of this distribution.
+
+  Rehandle implements the "evil" example from Xie et al, ICFP'20.
+  It shows how the stack can change after the call to `exit_capture` 
+  with a different reader_handler on top.
+-----------------------------------------------------------------------------*/
 #include "test.h"
 
-#if 0  // show dynamic backtrace
+/* ---------------------------------------------------------------------------
+  Show dynamic backtraces
+-----------------------------------------------------------------------------*/
+
+#if 1  // show dynamic backtrace
+#include <mprompt.h>
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <dbghelp.h>
+#pragma comment(lib,"dbghelp")
+static HANDLE current_process = INVALID_HANDLE_VALUE;
+static void print_backtrace(const char* msg) {
+  fprintf(stderr, "backtrace at: %s\n", msg);
+  void* bt[128];
+  int n = mp_backtrace(bt, 128);
+  if (current_process == INVALID_HANDLE_VALUE) {
+    current_process = GetCurrentProcess();
+    SymInitialize(current_process, NULL, TRUE);
+  }
+  PSYMBOL_INFO info = (PSYMBOL_INFO)calloc(1, sizeof(SYMBOL_INFO) + 256 * sizeof(TCHAR));
+  info->MaxNameLen = 255;
+  info->SizeOfStruct = sizeof(SYMBOL_INFO);
+  for (unsigned i = 0; i < n; i++) {
+    if (SymFromAddr(current_process, (DWORD64)(bt[i]), 0, info)) {
+      fprintf(stderr, "frame %2d: %8p: %s\n", i, bt[i], info->Name);
+    }
+    else {
+      fprintf(stderr, "frame %2d: %8p: <unknown: error: 0x%04x>\n", i, bt[i], GetLastError());
+    }
+  }
+  free(info);
+}
+
+#else
+
+// unix
 #include <execinfo.h>
 static void print_backtrace(const char* msg) {
   fprintf(stderr, "backtrace at: %s\n", msg);
   void* bt[128];
-  int n = backtrace(bt,128);
+  int n = mp_backtrace(bt,128);
   if (n <= 0) {
     fprintf(stderr, "  unable to get a backtrace\n");
     return;
@@ -25,11 +71,18 @@ static void print_backtrace(const char* msg) {
   fprintf(stderr,"\n");
   free(bts);
 } 
-#else
+#endif
+
+#else  // no backtrace
 static void print_backtrace(const char* msg) {
   UNUSED(msg);
 }
 #endif
+
+
+/* ---------------------------------------------------------------------------
+  Rehandling effect
+-----------------------------------------------------------------------------*/
 
 // Effect that returns its resumption
 MPE_DEFINE_EFFECT1(exit, capture)
@@ -49,9 +102,14 @@ static void* exit_handle(mpe_actionfun_t action, void* arg) {
 }
 
 
+/* ---------------------------------------------------------------------------
+  Test
+-----------------------------------------------------------------------------*/
+
+
 // Ask twice with an exit_capture in between
 static void* rehandle_body(void* arg) {
-  UNUSED(arg); 
+  UNUSED(arg);
   print_backtrace("reader_ask 1");
   long x = reader_ask();   // return 1
   exit_capture();          // exit and resume under a new reader
@@ -60,10 +118,12 @@ static void* rehandle_body(void* arg) {
   return mpe_voidp_long(x + y);
 }
 
+// first handler
 static void* with_exit_handle(void* arg) {
   return exit_handle(&rehandle_body, arg);
 }
 
+// and second replacement handler
 static void* with_resume(void* arg) {
   mpe_resume_t* r = (mpe_resume_t*)arg;
   return mpe_resume_final(r, NULL, NULL);

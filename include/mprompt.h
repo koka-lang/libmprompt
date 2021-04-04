@@ -89,6 +89,7 @@ mp_decl_export void mp_init(mp_config_t* config);
 // Low-level access  
 // (only `mp_mresume_should_unwind` is required by `libmphandler`)
 //---------------------------------------------------------------------------
+mp_decl_export int          mp_backtrace(void** backtrace, int len);
 
 mp_decl_export long         mp_resume_resume_count(mp_resume_t* r);
 mp_decl_export int          mp_resume_should_unwind(mp_resume_t* r);  // refcount==1 && resume_count==0
