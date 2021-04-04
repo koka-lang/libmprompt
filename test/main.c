@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
   // multi-shot tests
   amb_run();
   amb_state_run();
-  nqueens_run();    
+  nqueens_run();
   
   // direct mprompt tests
   //mp_async_test1M();  // async workers
@@ -80,7 +80,6 @@ static __noinline void* get_stack_top(void) {
   void* top = NULL;
   return as_stack_address(&top);
 }
-
 
 static void stack_use(long totalkb) {
   uint8_t* sp = (uint8_t*)get_stack_top();
