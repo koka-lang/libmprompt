@@ -8,8 +8,6 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 14)
 
 option(MP_USE_C             "Build C versions of the library without exception support" OFF)
-option(MP_MACH_USE_EXC_PORT "Use exception port on macOS to commit-on-demand; this avoids EXC_BAD_ACCESS failures in lldb" OFF)
-
 set(mp_version "0.1")
 
 # all sources are included in one file so we can generate independent libraries and stand-alone object files.
@@ -110,30 +108,6 @@ endif()
 
 
 # -----------------------------------------------------------------------------
-# Exception port on macOS?
-# -----------------------------------------------------------------------------
-if ((NOT MP_MACH_USE_EXC_PORT) AND APPLE AND (CMAKE_BUILD_TYPE MATCHES "Debug"))
-  message(STATUS "Enabling exception port on macOS for better debugging with lldb (override with -DMP_MACH_USE_EXC_PORT=FORCEOFF)")
-  set(MP_MACH_USE_EXC_PORT ON)  
-else()
-  if(MP_MACH_USE_EXC_PORT MATCHES "FORCEOFF")
-    set(MP_MACH_USE_EXC_PORT OFF)
-  endif() 
-  if(MP_MACH_USE_EXC_PORT) 
-    if (NOT APPLE)
-      message(WARNING "Exception port enabled but this is only tested on macOS")
-    else()
-      message(STATUS "Exception port enabled for improved debugging with lldb")
-    endif()
-  else()
-    if(APPLE) 
-      message(STATUS "(exception port disabled; when debugging with lldb, this can lead to EXC_BAD_ACCESS errors (override with -DMP_MACH_USE_EXC_PORT=ON))")
-    endif()
-  endif()
-endif()
-
-
-# -----------------------------------------------------------------------------
 # Flags
 # -----------------------------------------------------------------------------
 if((CMAKE_BUILD_TYPE MATCHES "Release") OR ((CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo") AND NOT APPLE))
@@ -185,9 +159,6 @@ target_include_directories(mprompt PUBLIC
 if (NOT WIN32)
   target_link_libraries(mprompt PUBLIC pthread)
 endif()
-if (MP_MACH_USE_EXC_PORT)
-  target_compile_definitions(mprompt PRIVATE MP_MACH_USE_EXC_PORT)
-endif()
 if (APPLE)  
   # target_link_options(mprompt PUBLIC -Wl,-no_compact_unwind -Wl,-keep_dwarf_unwind)
   # target_link_options(mprompt PUBLIC -Wl,-no_keep_dwarf_unwind)
@@ -205,9 +176,6 @@ target_include_directories(mpeff PUBLIC
 )
 if (NOT WIN32)
   target_link_libraries(mpeff PUBLIC pthread)
-endif()
-if (MP_MACH_USE_EXC_PORT)
-  target_compile_definitions(mpeff PRIVATE MP_MACH_USE_EXC_PORT)
 endif()
 
 

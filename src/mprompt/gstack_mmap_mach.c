@@ -17,14 +17,14 @@
   extra thread we prefer currently to only use this when running under
   a debugger.
 ----------------------------------------------------------------------------*/
-#if !defined(MP_MACH_USE_EXC_PORT)
+#if !defined(__MACH__)
 
-// Don't use an exception port
+// Never use an exception port
 static void mp_os_mach_thread_init(void) { }
 static void mp_os_mach_process_init(void) { }
 
 #else
-// Use an exception port (with associated thread)
+// Use a Mach exception port if running under a debugger
 static void mp_os_mach_thread_init(void);
 static void mp_os_mach_process_init(void);
 
