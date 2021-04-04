@@ -630,9 +630,73 @@ int mp_backtrace(void** bt, int len) {
   return mp_win_backtrace(bt, len, 1 /* don't include mp_backtrace */ );
 }
 
+#elif defined(__MACH__)
+
+// On macOS, the standard backtrace and unwind also do not
+// cross the prompt boundaries (despite proper dwarf info).
+// We use a similar strategy as on windows recursively yielding up and 
+// capturing backtraces per prompt.
+// Todo: check if this can be fixed using a base pointer in `mp_stack_enter`?
+
+#include <libunwind.h>
+
+typedef struct mp_yield_backtrace_env_s {
+  void** bt;
+  int    len;
+} mp_yield_backtrace_env_t;
+
+static int mp_mach_backtrace(void** bt, int len);
+
+static void* mp_yield_backtrace(mp_resume_t* resume, void* envarg) {
+  mp_yield_backtrace_env_t* env = (mp_yield_backtrace_env_t*)envarg;
+  intptr_t n = mp_mach_backtrace(env->bt, env->len);
+  return mp_resume_tail(resume, (void*)n);
+}
+
+static int mp_mach_unw_backtrace(void** bt, int len, int skip) {
+  unw_cursor_t cursor; 
+  unw_context_t uc;  
+  unw_getcontext(&uc);
+  unw_init_local(&cursor, &uc);
+  int count = 0;
+  while (count < len && unw_step(&cursor) > 0) {
+    unw_word_t ip;
+    unw_get_reg(&cursor, UNW_REG_IP, &ip);
+    if (skip > 0) {
+      skip--;
+    }
+    else {
+      bt[count++] = (void*)ip;
+    }
+    unw_proc_info_t pinfo;
+    unw_get_proc_info(&cursor, &pinfo);
+    if ((void*)pinfo.start_ip == &mp_stack_enter) break;
+  }
+  return count;
+}
+
+static int mp_mach_backtrace(void** bt, int len) {
+  if (len <= 0) return 0; // done
+  int n = mp_mach_unw_backtrace(bt,len, 2);
+  if (n <= 0 || n >= len) return n;
+  // check if we have more parent frames in a parent prompt
+  mp_prompt_t* p = mp_prompt_top();
+  if (p == NULL) return n;  // no more frames available
+  // yield recursively up to get more frames
+  mp_yield_backtrace_env_t env = { bt + n, len - n };
+  intptr_t m = (intptr_t)mp_yield(p, &mp_yield_backtrace, &env);
+  mp_assert_internal(m + n <= len);
+  return (int)(n + m);
+}
+
+int mp_backtrace(void** bt, int len) {
+  return mp_mach_backtrace(bt, len);
+}
+
+
 #else
 
-// macOS, Linux, etc. 
+// Linux, etc. 
 // Unwinding works as is (due to reliable dwarf unwind info and no stack limits in the thread local data)
 #include <execinfo.h>
 int mp_backtrace(void** bt, int len) {

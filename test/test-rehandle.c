@@ -49,14 +49,14 @@ static void print_backtrace(const char* msg) {
   fprintf(stderr,"\n");
 }
 
-#elif USE_LIB_UNWIND
+#elif USE_LIB_UNWIND && !defined(__MACH__)
 // edit the cmake to link the mptest target with libunwind:
 //   target_link_libraries(mpeff PUBLIC pthread)  ==> target_link_libraries(mpeff PUBLIC pthread unwind)
 // install as: 
 //   $ sudo apt-get install libunwind-dev
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
-
+#include <string.h>
 static void print_backtrace(const char* msg) {
   fprintf(stderr,"-----------------------------\n");
   fprintf(stderr, "libunwind backtrace at: %s\n", msg);
@@ -73,6 +73,7 @@ static void print_backtrace(const char* msg) {
     unw_get_proc_name(&cursor, name, 128, &ofs);
     printf ("frame %2d: %8p: %s at offset %ld\n", i, (void*)ip, name, ofs);
     i++;
+    //if (strcmp(name,"_mp_stack_enter") == 0) break;
   }
   fprintf(stderr,"\n");
 }
