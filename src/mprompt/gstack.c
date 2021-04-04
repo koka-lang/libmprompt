@@ -94,9 +94,17 @@ static bool     mp_os_mem_commit(uint8_t* start, ssize_t size);
 
 // gpool interface
 typedef struct  mp_gpool_s mp_gpool_t;
-static int      mp_gpools_is_accessible(void* p, ssize_t* available, const mp_gpool_t** gp);
-static uint8_t* mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
-static void     mp_gpool_free(uint8_t* stk);
+
+typedef enum mp_access_e {
+  MP_NOACCESS,                    // no access (outside pool)
+  MP_NOACCESS_STACK_OVERFLOW,     // no access due to stack overflow (in gap)
+  MP_ACCESS,                      // access in a gstack
+  MP_ACCESS_META                  // access in initial meta data (the `free` stack)
+} mp_access_t;
+
+static mp_access_t  mp_gpools_check_access(void* p, ssize_t* available, const mp_gpool_t** gp);
+static uint8_t*     mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
+static void         mp_gpool_free(uint8_t* stk);
 
 // called by hook installed in os specific include
 static void     mp_gstack_thread_done(void);  

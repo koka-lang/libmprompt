@@ -6,14 +6,16 @@
 
   Included from "gstack_mmap.c".
 
-  macOS (mach kernel) only.
+  macOS (mach kernel) only:
   In `lldb` SEGV signals cannot be continued which is trouble for our
   gstacks where the SEGV is used to commit pages on demand.
+  <https://bugs.llvm.org//show_bug.cgi?id=22868>
   
   We can work around this by catching SEGV at the mach kernel level
-  using the mach exception messages. This needs a separate thread though
-  to handle the messages which is why we only do this in debug mode and
-  use a regular signal handler in release mode.
+  using the mach exception messages. We could always do this on macOS
+  (instead of using a regular signal handler) but since it requires an 
+  extra thread we prefer currently to only use this when running under
+  a debugger.
 ----------------------------------------------------------------------------*/
 #if !defined(MP_MACH_USE_EXC_PORT)
 
@@ -99,11 +101,10 @@ static void mp_mach_reply( const mp_mach_exc_request_t* req, kern_return_t ret) 
 
 // process wide exception port
 static mach_port_name_t mp_mach_exc_port = MACH_PORT_NULL;
-
+  
 // the main exception handling thread
 static void* mp_mach_exc_thread_start(void* arg) {
   MP_UNUSED(arg);
-  //mp_trace_message("mach exception handler started\n");
   int tries = 0;
   // Keep receiving exception messages
   while(true) {
@@ -113,13 +114,11 @@ static void* mp_mach_exc_thread_start(void* arg) {
       //mp_trace_message("mach: received exception port message %i\n", req.code[0]);
       if (req.code[0] == KERN_PROTECTION_FAILURE) {  // == EXC_BAD_ACCESS
         void* address = (void*)req.code[1];
-        //x86_thread_state_t* tstate = (x86_thread_state_t*)req.old_state;
-        //mp_trace_message("  address: %p\n", address);
         // And call our commit-on-demand handler to see if we can provide access.
-        if (mp_gpools_commit_on_demand(address) == 0) {
+        if (mp_gpools_commit_on_demand(address)) {
           //mp_trace_message("  resolved bad acsess at %p\n", address);
-          mp_mach_reply(&req, KERN_SUCCESS);
-          continue;
+          mp_mach_reply(&req, KERN_SUCCESS);  // resolved!
+          continue;                           // wait for next request
         }
       }
       //mp_trace_message("  unable to handle exception message\n");
@@ -155,8 +154,21 @@ static void mp_os_mach_thread_init(void) {
   //mp_trace_message("thread mach exception ports initialized\n"); 
 }
 
-// Initialize the process exception port and associated handler thread
-static void mp_mach_create_exception_thread(void) {
+// Check if we are running under a debugger
+static bool mp_os_mach_in_debugger(void) {
+	struct kinfo_proc info = { 0 };
+  int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid() };
+  size_t size = sizeof(info);
+	sysctl(mib, 4, &info, &size, NULL, 0);
+	return ((info.kp_proc.p_flag & P_TRACED) != 0);
+}
+
+// Initialize process. (should be called at most once at process start)
+static void mp_os_mach_process_init(void) {
+  // Only set up a mach exception handler if we are running under a debugger
+  if (!mp_os_mach_in_debugger()) return;
+
+  // Create a single exception handler thread to handles EXC_BAD_ACCESS (before the debugger gets it)
   mach_port_t port = mach_task_self();
   if (mach_port_allocate(port, MACH_PORT_RIGHT_RECEIVE, &mp_mach_exc_port) != KERN_SUCCESS) {
     mp_error_message(EINVAL, "unable to set mach exception port\n");
@@ -164,22 +176,19 @@ static void mp_mach_create_exception_thread(void) {
   }  
   if (mach_port_insert_right(port, mp_mach_exc_port, mp_mach_exc_port, MACH_MSG_TYPE_MAKE_SEND) != KERN_SUCCESS) {
     mp_error_message(EINVAL, "unable to set mach exception port send permission\n");
-    return;
+    goto err;
   }
-  pthread_t exc_thread;
-  if (pthread_create(&exc_thread, NULL, &mp_mach_exc_thread_start, NULL) != 0) {
+  static pthread_t mp_mach_exc_thread;
+  if (pthread_create(&mp_mach_exc_thread, NULL, &mp_mach_exc_thread_start, NULL) != 0) {
     mp_error_message(EINVAL, "unable to create mach exception handler thread\n");
-    return;
+    goto err;
   }  
-  // mp_trace_message("process mach exception port initialized\n");
-}
+  return; 
 
-// Initialize process.
-static void mp_os_mach_process_init(void) {
-  // create a single exception handler thread to handles EXC_BAD_ACCESS (before the debugger gets it)
-  static pthread_once_t exc_thread_setup_once = PTHREAD_ONCE_INIT;
-  if (pthread_once(&exc_thread_setup_once, mp_mach_create_exception_thread) != 0) {
-    mp_error_message(EINVAL, "unable to setup mach exception handling thread");
+err:
+  if (mp_mach_exc_port != MACH_PORT_NULL) {
+    mach_post_deallocate(port, mp_mach_exc_port);
+    mp_mach_exc_port = MACH_PORT_NULL;
   }
 }
 

@@ -154,7 +154,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     //       up in the working set until it is actually reused :-( The advantage is that
     //       these pages no longer need to be zero'd, nor do we need to set the guard page again,
     //       and thus this can be more efficient.
-    // todo: is this the current call ok since it includes a mix of committed and decommitted pages?
+    // todo: is the current call ok since it includes a mix of committed and decommitted pages?
     //       we should perhaps only reset the committed range.
     if (VirtualAlloc(stk, reset_size, MEM_RESET, PAGE_NOACCESS /* ignored */) == NULL) {
       mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", stk, reset_size);
@@ -310,10 +310,10 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   uint8_t* const addr = (exncode!=MP_CPP_EXN ? (uint8_t*)ep->ExceptionRecord->ExceptionInformation[1] : tib->StackLimit - 8); 
   uint8_t* const page = mp_align_down_ptr(addr, os_page_size); 
   ssize_t available = 0;
-  int res = 0;
+  mp_access_t res = MP_NOACCESS;
   if (os_use_gpools) {
     // with a gpool we can reliably detect if there is available space in one of our gstack's
-    res = mp_gpools_is_accessible(page, &available, NULL);
+    res = mp_gpools_check_access(page, &available, NULL);
   }
   else {
     // not using gpools; for C++ exception we still need to guarantee a certain amount of stack space
@@ -322,12 +322,13 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
     uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, &available, &base);
     if (sp != NULL && base != mp_win_main_stack_base &&   // check we only grow the current stack (and not outside it!)
         commit_available < os_gstack_exn_guaranteed &&    // don't grow if not needed
-        available >= os_gstack_exn_guaranteed) {         
-      res = 1;
+        available >= os_gstack_exn_guaranteed) 
+    {         
+      res = MP_ACCESS;
     }
   }
 
-  if (res == 1 && (exncode == STATUS_STACK_OVERFLOW || exncode == MP_CPP_EXN)) {
+  if (res == MP_ACCESS && (exncode == STATUS_STACK_OVERFLOW || exncode == MP_CPP_EXN)) {
     // pointer in our gpool stack, make the page read-write
     // or, c++ throw and we need to guarantee stack size before the exception is being unwound.
     // use doubling growth; important for performance, see `main.cpp:test1M`.
@@ -361,7 +362,7 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
       }
     }
   }
-  else if (res == 2 && exncode == STATUS_ACCESS_VIOLATION) {
+  else if (res == MP_ACCESS_META && exncode == STATUS_ACCESS_VIOLATION) {
     // at the start of a gpool for zero'ing
     if (VirtualAlloc(page, os_page_size, MEM_COMMIT, PAGE_READWRITE) != NULL) {
       return EXCEPTION_CONTINUE_EXECUTION;

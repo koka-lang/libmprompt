@@ -73,11 +73,10 @@ static mp_gpool_t* mp_gpool_next(const mp_gpool_t* gp) {
   return (gp == NULL ? mp_gpool_first() : gp->next);
 }
 
-
 // Is a pointer located in a stack page and thus can be made accessible?
 // This routine is called from the pagefault signal handler to verify if 
 // the address is in one of our stacks and is allowed to be committed.
-static int mp_gpools_is_accessible(void* p, ssize_t* available, const mp_gpool_t** gpool) {
+static mp_access_t mp_gpools_check_access(void* p, ssize_t* available, const mp_gpool_t** gpool) {
   // for all pools
   if (available != NULL) *available = 0;
   if (gpool != NULL) *gpool = NULL;
@@ -88,7 +87,7 @@ static int mp_gpools_is_accessible(void* p, ssize_t* available, const mp_gpool_t
         // the start page
         if (available != NULL) *available = (sizeof(mp_gpool_t) - ofs);
         if (gpool != NULL) *gpool = gp;
-        return 2;
+        return MP_ACCESS_META;
       }
       else {
         ptrdiff_t block_ofs = ofs % gp->block_size;
@@ -97,16 +96,16 @@ static int mp_gpools_is_accessible(void* p, ssize_t* available, const mp_gpool_t
           ssize_t avail = (os_stack_grows_down ? block_ofs : gp->block_size - gp->gap_size - block_ofs);
           if (available != NULL) *available = avail;
           if (gpool != NULL) *gpool = gp;
-          return (avail == 0 ? 0 : 1);
+          return (avail == 0 ? MP_NOACCESS_STACK_OVERFLOW : MP_ACCESS);
         }
         else {
           // stack overflow
-          return 0;
+          return MP_NOACCESS_STACK_OVERFLOW;
         }
       }
     }
   }
-  return -1;
+  return MP_NOACCESS;
 }
 
 // Create a new pool in a given reserved virtual memory area.
@@ -190,13 +189,9 @@ static uint8_t* mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size) {
   uint8_t* pool = mp_os_mem_reserve(poolsize);
   if (pool == NULL) return NULL;
 
-  #ifdef _WIN32
-  // commit the full index to avoid handling access faults
-  ssize_t init_size = mp_align_up(sizeof(mp_gpool_t), os_page_size);
-  #else
   // commit on demand in the regular fault handler
   ssize_t init_size = mp_align_up(sizeof(mp_gpool_t), os_page_size);
-  #endif
+  
   if (!mp_os_mem_commit(pool, init_size)) {   // make initial part read/write. 
     mp_os_mem_free(pool, poolsize);
     return NULL;
