@@ -105,18 +105,16 @@ in `ide/vs2019/libmprompt.sln` to build and test.
 
 Some known issues are:
 
-- `gdb`, `lldb`: when using _gpools_ you will see segmentation fault errors (`SEGV`)
+- `gdb`, `lldb`: when using _gpools_ on Linux you will see segmentation fault errors (`SEGV`)
   which happen when demand paging stack memory; you need to continue through those
   or set the debugger to ignore them (enter `handle SIGSEGV nostop` in `gdb`).
   
-- `lldb` on macOS is unable to continue after a demand-page `SEGV`
-  (we believe this is due to this long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868)).
-  A workaround is to set the gstack initial commit high enough to avoid 
-  demand paging during debugging (use `config.stack_initial_commit=64*1024L;` for [example](test/main.c#L30)).
-
+- `lldb` on macOS has no such issue, but in debug mode we use an extra thread
+  to handle Mach exceptions (to avoid this long standing `lldb` [bug](https://bugs.llvm.org//show_bug.cgi?id=22868)).
+  
 - On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably. 
-  Backtraces in Visual Studio only span over prompts if the parent prompt happens 
-  to be at a higher address.
+  Backtraces in Visual Studio work well but sometimes the debugger stops a backtrace too soon
+  when libmprompt is unable to put a gstack at a lower address than its parent.
 
 
 ## Libmprompt
