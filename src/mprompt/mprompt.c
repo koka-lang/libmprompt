@@ -17,8 +17,6 @@
 
 #ifdef __cplusplus
 #include <exception>
-#include <utility>
-#include <stdexcept>
 #endif
 
 
@@ -56,11 +54,11 @@ typedef struct mp_return_point_s {   // allocated on the parent stack (which per
 //
 // A prompt can be in 2 states:
 // _active_:    top == NULL
-//              means the prompt and its gstack is part of propmt stack chain.
+//              means the prompt (and its gstack) is part of prompt stack chain.
 // _suspended_: top != NULL, resume_point != NULL
 //              This when being captured as a resumption. The `top` points to the end of the captured resumption.
-//              and the prompt (and children) are not part of the current stack chain.
-//              note that the prompt children are still in the _active_ state (but not part of a current execution stack chain)
+//              and the prompt (and its children) are not part of the current stack chain.
+//              note that the prompt children are still themselves in the _active_ state (but not part of a current execution stack chain)
 
 struct mp_prompt_s {  
   mp_prompt_t*  parent;     // parent: previous prompt up in the stack chain (towards bottom of the stack)
@@ -83,8 +81,8 @@ struct mp_resume_s {
 // If resuming multiple times, the original stack is saved in a corresponding chain of prompt_save structures.
 typedef struct mp_prompt_save_s {
   struct mp_prompt_save_s* next;
-  mp_prompt_t*  prompt;
-  mp_gsave_t*   gsave;  
+  mp_prompt_t*             prompt;
+  mp_gsave_t*              gsave;  
 } mp_prompt_save_t;
 
 
@@ -99,9 +97,14 @@ typedef struct mp_mresume_s {
 } mp_mresume_t;
 
 
-
-// We use bit 2 in the pointers (assuming 8-byte minimal alignment) to distinguish resume-at-most-once from multi-shot resume
-// This way we do not need allocation of at-most-once resumptions while having a consistent interface.
+//-----------------------------------------------------------------------
+// Distinguish plain once-resumptions from multi-shot resumptions.
+//
+// We use bit 2 in the pointers (assuming 8-byte minimal alignment) to 
+// distinguish  resume-at-most-once from multi-shot resumptions. This way 
+// we do not need  allocation of at-most-once resumptions while still 
+// providing a consistent interface.
+//-----------------------------------------------------------------------
 
 // Is this a once resumption (returns NULL if not)
 static mp_prompt_t* mp_resume_is_once(mp_resume_t* r) {
@@ -125,6 +128,14 @@ static mp_resume_t* mp_resume_multi(mp_mresume_t* r) {
   return (mp_resume_t*)(((intptr_t)r) | 4);
 }
 
+
+//-----------------------------------------------------------------------
+// Initialize
+//-----------------------------------------------------------------------
+
+void mp_init(mp_config_t* config) {
+  mp_gstack_init(config);
+}
 
 
 //-----------------------------------------------------------------------
@@ -442,8 +453,8 @@ int mp_resume_should_unwind(mp_resume_t* resume) {
 
 // Yield to a prompt with a certain resumption kind. Once yielded back up, execute `fun(arg)`
 static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
-  mp_assert_internal(mp_prompt_is_active(p)); // can only yield to an active prompt
-  mp_assert_internal(mp_prompt_is_ancestor(p));
+  mp_assert(mp_prompt_is_ancestor(p));           // can only yield up to an ancestor
+  mp_assert_internal(mp_prompt_is_active(p));    // can only yield to an active prompt
   // set our resume point (Y)
   mp_resume_point_t res;
   if (mp_setjmp(&res.jmp)) {
@@ -576,32 +587,6 @@ static void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
   }
 }
 
-//-----------------------------------------------------------------------
-// Initialize
-//-----------------------------------------------------------------------
-
-//#ifdef _WIN32
-//#include <windows.h>
-//void mp_throw_prepare(void) {
-//  //ULONG guarantee = 32 * MP_KIB;
-//  //SetThreadStackGuarantee(&guarantee);
-//  //NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
-//  //tib->StackLimit = *((void**)((uint8_t*)tib + 5240));//  
-//  //tib->StackBase = ((uint64_t*)NULL - 1);
-//  //*((void**)((uint8_t*)tib + 5240)) = NULL;    
-//}
-//#else
-//void mp_throw_prepare(void) {}
-//#endif
-
-void mp_init(mp_config_t* config) {
-  //ULONG guarantee = 32 * MP_KIB;
-  //SetThreadStackGuarantee(&guarantee);
-  // mp_throw_prepare();
-  mp_gstack_init(config);
-}
-
-
 
 //-----------------------------------------------------------------------
 // Backtrace
@@ -612,7 +597,7 @@ void mp_init(mp_config_t* config) {
 #include <windows.h>
 // On windows, CaptureStackBackTrace only captures to the first prompt 
 // (probaly due to stack extent checks stored in the TIB?). 
-// To make it work, we can just yield up to each parent prompt and 
+// To return a proper backtrace, we can yield up to each parent prompt and 
 // recursively capture partial backtraces at each point.
 typedef struct mp_yield_backtrace_env_s {
   void** bt;
