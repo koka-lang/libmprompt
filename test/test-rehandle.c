@@ -14,7 +14,7 @@
   Show dynamic backtraces (just testing unwinding through prompts)
 -----------------------------------------------------------------------------*/
 
-#define SHOW_BACKTRACE  1
+#define SHOW_BACKTRACE  0
 #define USE_LIB_UNWIND  0
 
 #if SHOW_BACKTRACE  // show dynamic backtrace
@@ -73,7 +73,7 @@ static void print_backtrace(const char* msg) {
     unw_word_t ofs;
     unw_get_proc_name(&cursor, name, 128, &ofs);
     
-    printf ("frame %2d: %8p: %s at offset %llu\n", i, (void*)ip, name, ofs);
+    printf ("frame %2d: %8p: %s at offset %ld\n", i, (void*)ip, name, (long)ofs);
     i++;
     if (false) { //strcmp(name,"mp_stack_enter") == 0) {
       unw_proc_info_t pinfo;
@@ -190,7 +190,10 @@ void rehandle_run(void) {
 
 static void thread_rehandle() {
   printf("\n-----------------------------\nrunning in separate thread\n");
-  test();
+  reader_run();
+  throw_run();
+  amb_state_run();
+  rehandle_run();
   printf("done separate thread\n-----------------------------\n");
 }
 
