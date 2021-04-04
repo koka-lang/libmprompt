@@ -14,8 +14,8 @@
   Show dynamic backtraces (just testing unwinding through prompts)
 -----------------------------------------------------------------------------*/
 
-#define SHOW_BACKTRACE  0
-#define USE_LIB_UNWIND  0
+#define SHOW_BACKTRACE  1
+#define USE_LIB_UNWIND  1
 
 #if SHOW_BACKTRACE  // show dynamic backtrace
 #include <mprompt.h>
@@ -37,7 +37,7 @@ static void print_backtrace(const char* msg) {
   PSYMBOL_INFO info = (PSYMBOL_INFO)calloc(1, sizeof(SYMBOL_INFO) + 256 * sizeof(TCHAR));
   info->MaxNameLen = 255;
   info->SizeOfStruct = sizeof(SYMBOL_INFO);
-  for (unsigned i = 0; i < n; i++) {
+  for (int i = 0; i < n; i++) {
     if (SymFromAddr(current_process, (DWORD64)(bt[i]), 0, info)) {
       fprintf(stderr, "frame %2d: %8p: %s\n", i, bt[i], info->Name);
     }
@@ -50,8 +50,10 @@ static void print_backtrace(const char* msg) {
 }
 
 #elif USE_LIB_UNWIND
-// edit the cmake to link the mptest target with libunwind; install as: 
-// $ sudo apt-get install libunwind-dev
+// edit the cmake to link the mptest target with libunwind:
+//   target_link_libraries(mpeff PUBLIC pthread)  ==> target_link_libraries(mpeff PUBLIC pthread unwind)
+// install as: 
+//   $ sudo apt-get install libunwind-dev
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
 
@@ -77,7 +79,7 @@ static void print_backtrace(const char* msg) {
 
 #else
 
-// posix
+// Posix simple stack trace
 #include <execinfo.h>
 static void print_backtrace(const char* msg) {
   fprintf(stderr,"-----------------------------\n");
@@ -174,3 +176,18 @@ static void test(void) {
 void rehandle_run(void) {
   test();
 }
+
+#if __cplusplus
+#include <thread>
+
+static void thread_rehandle() {
+  printf("\n-----------------------------\nrunning in separate thread\n");
+  test();
+  printf("done separate thread\n-----------------------------\n");
+}
+
+void thread_rehandle_run(void) {
+  auto t = std::thread(&thread_rehandle);
+  t.join();  
+}
+#endif

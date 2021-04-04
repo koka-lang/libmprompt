@@ -50,6 +50,9 @@ int main(int argc, char** argv) {
   amb_run();
   amb_state_run();
   nqueens_run();
+
+  // threaded test (C++ only)
+  thread_rehandle_run();
   
   // direct mprompt tests
   //mp_async_test1M();  // async workers

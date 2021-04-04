@@ -41,11 +41,13 @@ void rehandle_run(void);
 void throw_run(void);
 void exn_run(void);
 void multi_unwind_run(void);
+void thread_rehandle_run(void);
 #else
 // dummies in C
 static inline void throw_run(void) { }
 static inline void exn_run(void) { }
 static inline void multi_unwind_run(void) { };
+static inline void thread_rehandle_run(void) { };
 #endif
 
 #ifdef __cplusplus

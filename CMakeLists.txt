@@ -183,7 +183,7 @@ endif()
 add_executable(mptest ${test_sources})
 target_compile_options(mptest PRIVATE ${mp_cflags})
 target_include_directories(mptest PRIVATE include)
-target_link_libraries(mptest PRIVATE mpeff unwind)
+target_link_libraries(mptest PRIVATE mpeff )
 
 enable_testing()
 add_test(test_api, mptest)
