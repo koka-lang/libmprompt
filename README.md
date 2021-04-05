@@ -23,7 +23,7 @@ There are two libraries provided:
 - `libmpeff`: a small example library that uses `libmprompt` to implement
   efficient algebraic effect handlers in C (with a similar interface as [libhandler]).
 
-Particular aspects:n
+Particular aspects:
 
 - The goal is to be fully compatible with C/C++ semantics and to be able to
   link to this library and use the multi-prompt abstraction _as is_ without special
