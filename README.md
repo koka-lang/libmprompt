@@ -227,7 +227,7 @@ evaluation context), is an error (e.g. like an unhandled exception).
 statically at compile-time but in our library this is a runtime error).
 
 These primitives are very expressive but can still be strongly
-typed in simply typed lambda calculus and are thus sound and
+typed in simply typed lambda calculus and are sound and
 composable:
 ```haskell
 prompt :: (Marker a -> a) -> a               
