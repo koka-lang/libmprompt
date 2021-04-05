@@ -218,10 +218,13 @@ For example:
 |----> 43
 ```
 
-At runtime, yielding to a prompt that is no longer in scope (i.e.
-in the evalution context) is an error (e.g. like an unhandled exception).
-(Note: in the C implementation, the unique markers `m` are simply
-represented directly by a `mp_prompt_t*`).
+In the C implementation, the unique markers `m` are simply
+represented directly by a `mp_prompt_t*`.
+At runtime, yielding to a prompt that is no longer in scope, 
+or to a prompt that is not an ancestor (i.e. not in your
+evaluation context), is an error (e.g. like an unhandled exception).
+(Effect type systems, like in [Koka], can prevent this situation
+statically at compile-time but in our library this is a runtime error).
 
 These primitives are very expressive but can still be strongly
 typed in simply typed lambda calculus and are thus sound and
@@ -578,3 +581,5 @@ typedef struct mpe_handlerdef_s {
   mpe_operation_t   operations[8];
 } mpe_handlerdef_t;
 ```
+
+[Koka]: https://koka-lang.github.io
