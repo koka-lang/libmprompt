@@ -16,10 +16,11 @@
 /*-----------------------------------------------------------------
   Benchmark
 -----------------------------------------------------------------*/
-
+static bool d1_destructed;
+static bool d2_destructed;
 
 static void* bench_exn(void* arg) {
-  test_raii_t d1("d1");
+  test_raii_t d1("d1", &d1_destructed);
   UNUSED(arg);
   long i = state_get() + state_get();
   if (i > 42) {
@@ -33,7 +34,7 @@ static void* bench_exn(void* arg) {
   Run
 -----------------------------------------------------------------*/
 static void* bench_state(void* arg) {
-  test_raii_t d2("d2");
+  test_raii_t d2("d2", &d2_destructed);
   return state_handle(&bench_exn, 42, arg);
 }
 
@@ -41,7 +42,7 @@ static void test(void) {
   long res = 0; 
   mpt_bench{ res = mpe_long_voidp(exn_handle(&bench_state,NULL)); }
   printf("test-exn  : %ld\n", res);
-  mpt_assert(res == 0, "test-exn");  
+  mpt_assert(res == 0 && d1_destructed && d2_destructed, "test-exn");  
 }
 
 

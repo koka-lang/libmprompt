@@ -19,10 +19,10 @@ MPE_DEFINE_OP0(multi, unwind, long)
 /*-----------------------------------------------------------------
   Benchmark
 -----------------------------------------------------------------*/
-
+static bool d3_destructed;
 
 static void* bench_main(void* arg) {
-  test_raii_t d3("d3");
+  test_raii_t d3("d3", &d3_destructed);
   UNUSED(arg);
   long i = multi_unwind() + multi_unwind();
   return mpe_voidp_long(i);
@@ -61,7 +61,7 @@ static void test(void) {
   long res = 0; 
   mpt_bench{ res = mpe_long_voidp(multi_handle(&bench_main,NULL)); }
   printf("test-multi-unwind  : %ld\n", res);
-  mpt_assert(res == 42, "test-multi-unwind");  
+  mpt_assert(res == 42 && d3_destructed, "test-multi-unwind");  
 }
 
 

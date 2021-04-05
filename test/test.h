@@ -13,9 +13,6 @@
 #include <mpeff.h>
 
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #define UNUSED(x)  (void)(x)
 #define mpt_assert(cond,msg)  mpt_assert_at(cond,msg,__FILE__,__LINE__)
@@ -54,12 +51,15 @@ static inline void thread_rehandle_run(void) { };
 class test_raii_t {
 private:
   const char* msg;
+  bool* destructed;
 public:
-  test_raii_t(const char* s) : msg(s) {
+  test_raii_t(const char* s, bool* is_destructed) : msg(s), destructed(is_destructed) {
     fprintf(stderr, "construct: %s\n", msg);
+    if (destructed != NULL) *destructed = false;
   }
   ~test_raii_t() {
     fprintf(stderr, "destruct: %s\n", msg);
+    if (destructed != NULL) *destructed = true;
   }
 };
 #endif
@@ -198,7 +198,3 @@ static inline void blist_println(blist xs, void (*print_elem)(void*)) {
   printf("]\n");
 }
 
-
-#ifdef __cplusplus
-}
-#endif

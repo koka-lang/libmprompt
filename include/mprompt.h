@@ -39,15 +39,15 @@ typedef void* (mp_start_fun_t)(mp_prompt_t*, void* arg);
 typedef void* (mp_yield_fun_t)(mp_resume_t*, void* arg);  
 
 // Continue with `fun(p,arg)` under a fresh prompt `p`.
-mp_decl_export void* mp_prompt(mp_start_fun_t* fun, void* arg);
+mp_decl_export void* mp_prompt(mp_start_fun_t* fun, void* arg); 
 
 // Yield back up to a parent prompt `p` and run `fun(r,arg)` from there, where `r` is a `mp_resume_t` resumption.
 mp_decl_export void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
 
 // Resume back to the yield point with a result; can be used at most once.
-mp_decl_export void* mp_resume(mp_resume_t* resume, void* arg);         // resume 
-mp_decl_export void* mp_resume_tail(mp_resume_t* resume, void* arg);    // resume as the last action in a `mp_yield_fun_t`
-mp_decl_export void  mp_resume_drop(mp_resume_t* resume);               // drop the resume object without resuming
+mp_decl_export void* mp_resume(mp_resume_t* resume, void* arg);      // resume 
+mp_decl_export void* mp_resume_tail(mp_resume_t* resume, void* arg); // resume as the last action in a `mp_yield_fun_t`
+mp_decl_export void  mp_resume_drop(mp_resume_t* resume);            // drop the resume object without resuming
 
 
 //---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ mp_decl_export void  mp_resume_drop(mp_resume_t* resume);               // drop 
 //---------------------------------------------------------------------------
 
 mp_decl_export void* mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
-mp_decl_export mp_resume_t* mp_resume_dup(mp_resume_t* r);              // only myield resumptions can be dup'd
+mp_decl_export mp_resume_t* mp_resume_dup(mp_resume_t* r);    // only myield resumptions can be dup'd
 
 
 
@@ -99,7 +99,7 @@ mp_decl_export int          mp_resume_should_unwind(mp_resume_t* r);  // refcoun
 
 // Separate prompt creation
 mp_decl_export mp_prompt_t* mp_prompt_create(void);
-mp_decl_export void*        mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg);
+mp_decl_export void* mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg) ;
 
 // Walk the chain of prompts.
 mp_decl_export mp_prompt_t* mp_prompt_top(void);
