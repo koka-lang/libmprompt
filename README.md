@@ -43,9 +43,7 @@ Particular aspects:n
 - A drawback of our implementation is that it requires 64-bit systems in order to have enough
   virtual address space. Moreover, at miminum 4KiB of memory is committed per 
   (active) prompt. On systems without "overcommit" we use internal _gpools_ to 
-  still be able to commit stack space on-demand using a special signal handler. 
-  Another drawback is that debug/exception unwinding is fragile when using multiple stacks
-  on various platforms, and we are still working on making it more robust.
+  still be able to commit stack space on-demand using a special signal handler.   
 
 - We aim to support millions of prompts with fast yielding and resuming. If we run
   the [`mp_async_test1M`](test/main.c#L82) test we simulate an asynchronous
