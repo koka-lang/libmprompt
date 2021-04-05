@@ -145,8 +145,8 @@ void mp_init(mp_config_t* config) {
 // The top of the prompts chain; points to the prompt on whose stack we currently execute.
 mp_decl_thread mp_prompt_t* _mp_prompt_top;
 
-// get the top of the chain; ensures proper initialization
-static inline mp_prompt_t* mp_prompt_top(void) {  
+// get the top of the prompt chain
+mp_prompt_t* mp_prompt_top(void) {  
   return _mp_prompt_top;
 }
 

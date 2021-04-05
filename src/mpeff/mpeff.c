@@ -194,7 +194,7 @@ public:
 
 static void mpe_unwind_to(mpe_frame_handle_t* target, const mpe_operation_t* op, void* arg) {
   //fprintf(stderr, "throw unwind..\n");
-  mp_throw mpe_unwind_exception(target, op, arg);
+  throw mpe_unwind_exception(target, op, arg);
 }
 #else
 static void* mpe_perform_yield_to_abort(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg);
@@ -436,7 +436,7 @@ static mpe_decl_noinline void* mpe_handle_start(mp_prompt_t* prompt, void* earg)
   catch (const mpe_unwind_exception& e) {
     if (e.target != &h) {
       //fprintf(stderr, "rethrow unwind\n");
-      mp_throw;  // rethrow 
+      throw;  // rethrow 
     }
     //fprintf(stderr, "catch unwind\n");
     return mpe_perform_yield_to_abort(e.target, e.op, e.arg);  // yield to ourselves (exiting this prompt)

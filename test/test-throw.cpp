@@ -20,7 +20,7 @@ static void* bench_counter(void* arg) {
   UNUSED(arg);
   long i = state_get() + state_get();
   if (i > 42) {
-    mp_throw std::logic_error("ouch!");
+    throw std::logic_error("ouch!");
   }
   return mpe_voidp_long(i);
 }
