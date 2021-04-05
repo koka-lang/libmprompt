@@ -13,14 +13,16 @@
 #include <unistd.h>    // sysconf
 #include <signal.h>    // sigaction
 #include <fcntl.h>     // file read
+#include <pthread.h>   // use pthread local storage keys to detect thread ending
 
 // We need atomic operations for the `gpool` on systems that do not have overcommit.
 #include "internal/atomic.h"
 
-// use pthread local storage keys to detect thread ending
-#include <pthread.h>
+// forward declaration 
+static bool mp_gpools_commit_on_demand(void* addr);
 
-
+// macOS in debug mode needs an exception port handler 
+#include "gstack_mmap_mach.c"
 
 //----------------------------------------------------------------------------------
 // The OS primitive `gstack` interface based on `mmap`.
@@ -190,6 +192,11 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
 // Init/Done
 //--------------------------------------------------
 
+static void  mp_gpools_process_init(void);
+static void  mp_gpools_process_done(void);
+static void  mp_gpools_thread_init(void);
+
+
 #if defined(__linux__)
 static bool mp_linux_use_overcommit(void) {
   int open_flags = O_RDONLY;
@@ -215,10 +222,9 @@ static void mp_pthread_done(void* value) {
 
 static void mp_gstack_os_thread_init() {
   pthread_setspecific(mp_pthread_key, (void*)(1));  // set to non-zero value
+  mp_gpools_thread_init();
+  mp_os_mach_thread_init();  
 }
-
-static void  mp_gpools_process_init(void);
-static void  mp_gpools_process_done(void);
 
 static bool mp_gstack_os_init(void) {
   // get the page size
@@ -240,9 +246,12 @@ static bool mp_gstack_os_init(void) {
 
   // register pthread key to detect thread termination
   pthread_key_create(&mp_pthread_key, &mp_pthread_done);
+
   // set process cleanup of the gpools
   atexit(&mp_gpools_process_done);
+
   mp_gpools_process_init();
+  mp_os_mach_process_init();  // macOS
   return true;
 }
 
@@ -257,15 +266,13 @@ static struct sigaction mp_sig_segv_prev_act;
 static struct sigaction mp_sig_bus_prev_act;
 static mp_decl_thread stack_t* mp_sig_stack;  // every thread needs a signal stack in order do demand commit stack pages
 
-static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* arg) {
+static bool mp_gpools_commit_on_demand(void* addr) {
   // demand allocate?
-  //mp_trace_message("sig: entered\n");
-  uint8_t* p = mp_align_down_ptr((uint8_t*)info->si_addr, os_page_size);
-  //mp_trace_message("  sig: signum: %i, addr: %p, aligned: %p\n", signum, info->si_addr, p);
+  uint8_t* p = mp_align_down_ptr((uint8_t*)addr, os_page_size);
   ssize_t available;
   const mp_gpool_t* gp;
-  int res = mp_gpools_is_accessible(p,&available,&gp); 
-  if (res == 1) {
+  mp_access_t access = mp_gpools_check_access(p,&available,&gp); 
+  if (access == MP_ACCESS) {
     // a pointer to a valid gstack in our gpool, make the page read-write
     // mp_trace_message("  segv: unprotect page\n");
     // use quadratic growth; quite important for performance
@@ -278,18 +285,32 @@ static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* a
     //mp_trace_message("expand stack: extra: %zd, avail: %zd, used: %d\n", extra, available, used);
     p = p - extra;
     mprotect(p, extra + os_page_size, PROT_READ | PROT_WRITE);
-    return; // we are ok!
+    return true; 
   }
-  else if (res == 2) {  
+  else if (access == MP_ACCESS_META) {  
     // demand page the mp_gpool_t.free array with zeros
     if (mprotect(p, os_page_size, PROT_READ | PROT_WRITE) == 0) {
       if (gp!=NULL && !gp->zeroed) {
         memset(p, 0, os_page_size);  // zero out as well (can be needed with MAP_UNINITIALIZED)
       }
+      return true;
     }    
   }
-  else if (res == 0) {
-    mp_fatal_message(EFAULT,"stack overflow at %p\n", info->si_addr); // abort
+  else if (access == MP_NOACCESS_STACK_OVERFLOW) {
+    // stack overflow
+    mp_error_message(EINVAL,"stack overflow at %p\n", addr);  // abort?
+    return false;
+  }
+  
+  // not in one of our pools or error
+  return false;
+}
+
+static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* arg) {
+  // demand allocate?
+  //mp_trace_message("sig: signum: %i, addr: %p\n", signum, info->si_addr);
+  if (mp_gpools_commit_on_demand(info->si_addr)) {
+    return; // ok!
   }
   
   // otherwise call the previous handler
@@ -310,7 +331,7 @@ static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* a
 // ----------------------------------------------------
 
 // or SIGSTKSIZE but we require just a small stack
-#define MP_SIG_STACK_SIZE   (MINSIGSTKSZ < 4*MP_KIB ? 4*MP_KIB : MINSIGSTKSZ)
+#define MP_SIG_STACK_SIZE   (MINSIGSTKSZ < 8*MP_KIB ? 8*MP_KIB : MINSIGSTKSZ)
 
 static void mp_gpools_thread_done(void) {
   // free signal handler stack

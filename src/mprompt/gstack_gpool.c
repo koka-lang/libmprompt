@@ -24,11 +24,17 @@
 
   The mp_gpool_t has a "free stack" itself (`free`) consisting of N (~32000) `int16_t`
   indices which are demand initialized to zero. The top of the stack starts
-  at 0. Each entry at index `i` represents an available gstack at index `i + free[i]`:
+  at 0. Each entry at index `i` represents an available gstack at index `free[i] + i`:
   so the initial on-demand zero'd `free` stack makes all gstacks available in the pool :-)
+
   From this free stack we can pop gstacks to use, or push back ones that are freed
   in a very efficient way. Moreover, reused gstacks do not need to be re-committed
   (and re-zero initialized by the OS).
+
+  note: when the stack grows down, we modiy the index to allocate gstacks in 
+  reverse; i.e. the entry at index `i` represents an available gstack at `N - (free[i] + i)`.
+  On Windows, backtraces only work if the parent of a gstack is at a higher
+  address and this strategy will help to ensure this is often the case.
 
   Since the gpool list is global we use a small spinlock for thread-safe
   allocation and free.
@@ -41,6 +47,10 @@
 // gpool
 //----------------------------------------------------------------------------------
 #define MP_GPOOL_MAX_COUNT  (32000)         // at most INT16_MAX
+
+static inline bool mp_gpool_grows_down(void) {
+  return os_stack_grows_down;               // separate definition so we can debug reverse allocation
+}
 
 typedef struct mp_gpool_s {
   struct mp_gpool_s* next;
@@ -69,11 +79,13 @@ static mp_gpool_t* mp_gpool_next(const mp_gpool_t* gp) {
   return (gp == NULL ? mp_gpool_first() : gp->next);
 }
 
-
 // Is a pointer located in a stack page and thus can be made accessible?
+// This method is the reason way we need gpools: it allows us to reliably (and efficiently)
+// determine if a given address is inside a gstack or not and can be made accessible (or not).
+//
 // This routine is called from the pagefault signal handler to verify if 
 // the address is in one of our stacks and is allowed to be committed.
-static int mp_gpools_is_accessible(void* p, ssize_t* available, const mp_gpool_t** gpool) {
+static mp_access_t mp_gpools_check_access(void* p, ssize_t* available, const mp_gpool_t** gpool) {
   // for all pools
   if (available != NULL) *available = 0;
   if (gpool != NULL) *gpool = NULL;
@@ -84,7 +96,7 @@ static int mp_gpools_is_accessible(void* p, ssize_t* available, const mp_gpool_t
         // the start page
         if (available != NULL) *available = (sizeof(mp_gpool_t) - ofs);
         if (gpool != NULL) *gpool = gp;
-        return 2;
+        return MP_ACCESS_META;
       }
       else {
         ptrdiff_t block_ofs = ofs % gp->block_size;
@@ -93,16 +105,16 @@ static int mp_gpools_is_accessible(void* p, ssize_t* available, const mp_gpool_t
           ssize_t avail = (os_stack_grows_down ? block_ofs : gp->block_size - gp->gap_size - block_ofs);
           if (available != NULL) *available = avail;
           if (gpool != NULL) *gpool = gp;
-          return (avail == 0 ? 0 : 1);
+          return (avail == 0 ? MP_NOACCESS_STACK_OVERFLOW : MP_ACCESS);
         }
         else {
           // stack overflow
-          return 0;
+          return MP_NOACCESS_STACK_OVERFLOW;
         }
       }
     }
   }
-  return -1;
+  return MP_NOACCESS;
 }
 
 // Create a new pool in a given reserved virtual memory area.
@@ -151,19 +163,20 @@ static uint8_t* mp_gpool_allocx(uint8_t** stk, ssize_t* stk_size) {
     _access += gp->free[gp->free_sp + 64]; // ensure no page fault happens inside the spin lock
     mp_spin_lock(&gp->free_lock) {
       // pop from free stack
-      sp = gp->free_sp++;
+      sp = gp->free_sp;
       if (sp < gp->block_count) {
-        block_idx = gp->free[sp] + sp;   // block index is the value + sp, this way gp->free can be zero initialized !
+        gp->free_sp = sp + 1;
+        block_idx = gp->free[sp] + sp;
       }
+    }
+    if (mp_gpool_grows_down()) {
+      block_idx = gp->block_count - block_idx; // grow from top
     }
     mp_assert_internal(block_idx >= 0 && block_idx < gp->block_count);
     if (block_idx > 0) {
       if (block_idx >= gp->block_count) return NULL; // paranoia
       uint8_t* p = ((uint8_t*)gp + (block_idx * gp->block_size));
       //mp_trace_message("gpool_alloc: gp: %p, p: %p, block_idx: %zd, sp: %zd\n", gp, p, block_idx, sp);
-      //try to make the initial stack commit accessible (to avoid handling as grow signal)
-      //uint8_t* top = (os_stack_grows_down ? p + (gp->block_size - gp->gap_size - os_gstack_initial_commit) : p); 
-      //mp_mem_os_commit(top, os_gstack_initial_commit);  // ok if it fails
       *stk = p;
       *stk_size = gp->block_size - gp->gap_size;
       return p;
@@ -182,13 +195,9 @@ static uint8_t* mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size) {
   uint8_t* pool = mp_os_mem_reserve(poolsize);
   if (pool == NULL) return NULL;
 
-  #ifdef _WIN32
-  // commit the full index to avoid handling access faults
-  ssize_t init_size = mp_align_up(sizeof(mp_gpool_t), os_page_size);
-  #else
   // commit on demand in the regular fault handler
   ssize_t init_size = mp_align_up(sizeof(mp_gpool_t), os_page_size);
-  #endif
+  
   if (!mp_os_mem_commit(pool, init_size)) {   // make initial part read/write. 
     mp_os_mem_free(pool, poolsize);
     return NULL;
@@ -214,11 +223,18 @@ static void mp_gpool_free(uint8_t* stk) {
       mp_assert(block_idx > 0); if (block_idx == 0) return;
       mp_assert(block_idx < gp->block_count); if (block_idx >= gp->block_count) return;
       ptrdiff_t idx;
+      if (mp_gpool_grows_down()) {
+        idx = gp->block_count - block_idx; // reverse if growing down
+      }
+      else {
+        idx = block_idx;
+      }
       mp_spin_lock(&gp->free_lock) {
         // push on free stack
         gp->free_sp--;
         sp = gp->free_sp;
-        idx = block_idx - sp;
+        //idx = gp->block_count - block_idx - sp;
+        idx = idx - sp;        
         gp->free[sp] = (uint16_t)idx;
       }
       mp_assert(idx >= INT16_MIN && idx <= INT16_MAX);

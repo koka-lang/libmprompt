@@ -58,7 +58,7 @@ jmpbuf layout:
 
 .global mp_setjmp
 .global mp_longjmp
-.global mp_switch_to_stack
+.global mp_stack_enter
 
 .type mp_setjmp,%function
 .type mp_longjmp,%function
@@ -113,7 +113,6 @@ mp_longjmp:
   ret                         /* jump to lr */
 
 
-
 /* switch stack 
    x0: stack pointer, 
    x1: stack commit limit    (ignored on unix)
@@ -122,20 +121,69 @@ mp_longjmp:
    x4: function to run
    x5: argument to pass to the function 
 */
+/* DWARF unwind info instructions: <http://dwarfstd.org/doc/DWARF5.pdf> 
+   Register mapping: <file:///C:/Users/daan/AppData/Local/Temp/IHI0057B_aadwarf64.pdf>
+*/
+#define DW_def_cfa_expression     0x0F  
+#define DW_expression             0x10      
+#define DW_val_expression         0x16        
+#define DW_OP_deref               0x06        /* dereference the top of the expression stack */
+#define DW_OP_breg(r)             (0x70+r)    /* push `register + ofs` on the expression stack */
+#define DW_REG_fp                 29
+#define DW_REG_lr                 30
+#define DW_REG_sp                 31
+#define DW_REG_ELR_mode           33
+#define DW_REG_v0                 64
+
 mp_stack_enter:
+  .cfi_startproc 
+  .cfi_signal_frame             /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
+  
+  stp     fp, lr, [sp, #16]!    /* link frame (seems needed for libunwind) */
+  .cfi_adjust_cfa_offset 32
+  .cfi_rel_offset lr, 24
+  .cfi_rel_offset fp, 16
+
+  mov     fp, sp
+  sub     sp, sp, #16
+  str     x3, [sp, #8]          /* save x3 to [sp+8] for unwinding */
+  .cfi_remember_state 
+  
+  
+  /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 
+     the previous registers can now be restored (during unwind) using .cfi_offset directives */
+  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_sp), 8, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = [[sp,#8]] */  
+  .cfi_offset sp, 104           /* sp */
+  .cfi_offset x30, 96           /* lr */
+  .cfi_offset x29, 88           /* fp */
+  .cfi_offset x18,  0
+  .cfi_offset x19,  8
+  .cfi_offset x20, 16
+  .cfi_offset x21, 24
+  .cfi_offset x22, 32
+  .cfi_offset x23, 40
+  .cfi_offset x24, 48
+  .cfi_offset x25, 56
+  .cfi_offset x26, 64
+  .cfi_offset x27, 72
+  .cfi_offset x28, 80  
+
   and     sp, x0, #~31          /* switch to the new stack (aligned down to 32 bytes) */
   sub     sp, sp, #32           /* sp = sp - 32 */
   stp     x29, x30, [sp, #16]   /* mimic call on new stack: sp[24] = x30, sp[16] = lr */
-  str     x3, [sp, #8]          /* save jmpbuf_t** on the stack for (future) unwinding: sp[8] = x3 */
+  str     x3, [sp, #8]          /* save jmpbuf_t** on the stack for (future) unwinding: x3 == [sp+8]  */
   add     x29, sp, #16          /* set our frame pointer to sp[16] */
   
   mov     x0, x5                /* argument to x0 */
-  mov     x1, #0                /* no trap frame */
-  bl      x4                    /* and call the function */
+  mov     x1, fp                /* pass unwind frame */
+  blr     x4                    /* and call the function */
 
   /* should never get here */
   bl      abort
 
+  .cfi_restore_state
   ldr     x0, [sp, #8]          /* load jmpbuf_t* and longjmp back */
   ldr     x0, [x0]
   b       mp_longjmp
+
+  .cfi_endproc

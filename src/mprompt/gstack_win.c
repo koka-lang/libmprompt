@@ -10,7 +10,7 @@
 -----------------------------------------------------------------------------*/
 #include <windows.h>
 #include <fibersapi.h>           // needed for thread termination <https://devblogs.microsoft.com/oldnewthing/20191011-00/?p=102989>
-
+#include "internal/atomic.h"
 
 // -----------------------------------------------------
 // Interface
@@ -23,8 +23,33 @@ static void     mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit);
 static const char* mp_system_error_message(int errno, const char* fmt, ...);
 
 // Reserve memory
+// we use a hint address in windows to try to stay under the system stack for better backtraces
+static _Atomic(ssize_t) mp_os_reserve_hint;
+
 static uint8_t* mp_os_mem_reserve(ssize_t size) {
-  uint8_t* p = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
+  uint8_t* p = NULL;
+  ssize_t rsize = mp_align_up(size, 64 * MP_KIB);  
+  ssize_t hint  = mp_atomic_load(&mp_os_reserve_hint);
+  // initialize
+  if (hint == 0) {
+    hint = (ssize_t)&hint - 64 * MP_MIB;  // place lower as the system stack (and use ASLR from the stack)
+    hint = mp_align_down(hint, 64 * MP_KIB);
+    ssize_t expected = 0;
+    if (!mp_atomic_cas(&mp_os_reserve_hint, &expected, hint)) { 
+      hint = expected;
+    }
+  }
+  // try placing under the system stack (for better backtraces)
+  if (hint > rsize && hint > MP_GIB) {  
+    ssize_t hint = mp_atomic_add(&mp_os_reserve_hint, -rsize) - rsize;      // race is ok, it is just a hint
+    if (hint > 0) {
+      p = (uint8_t*)VirtualAlloc((void*)hint, size, MEM_RESERVE, PAGE_NOACCESS);
+    }
+  }
+  // otherwise allocation determined by OS
+  if (p == NULL) {
+    p = (uint8_t*)VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
+  }
   if (p == NULL) {
     mp_system_error_message(ENOMEM, "failed to reserve memory of size %zd\n", size);
   }
@@ -129,7 +154,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     //       up in the working set until it is actually reused :-( The advantage is that
     //       these pages no longer need to be zero'd, nor do we need to set the guard page again,
     //       and thus this can be more efficient.
-    // todo: is this the current call ok since it includes a mix of committed and decommitted pages?
+    // todo: is the current call ok since it includes a mix of committed and decommitted pages?
     //       we should perhaps only reset the committed range.
     if (VirtualAlloc(stk, reset_size, MEM_RESET, PAGE_NOACCESS /* ignored */) == NULL) {
       mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", stk, reset_size);
@@ -285,10 +310,10 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   uint8_t* const addr = (exncode!=MP_CPP_EXN ? (uint8_t*)ep->ExceptionRecord->ExceptionInformation[1] : tib->StackLimit - 8); 
   uint8_t* const page = mp_align_down_ptr(addr, os_page_size); 
   ssize_t available = 0;
-  int res = 0;
+  mp_access_t res = MP_NOACCESS;
   if (os_use_gpools) {
     // with a gpool we can reliably detect if there is available space in one of our gstack's
-    res = mp_gpools_is_accessible(page, &available, NULL);
+    res = mp_gpools_check_access(page, &available, NULL);
   }
   else {
     // not using gpools; for C++ exception we still need to guarantee a certain amount of stack space
@@ -297,12 +322,13 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
     uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, &available, &base);
     if (sp != NULL && base != mp_win_main_stack_base &&   // check we only grow the current stack (and not outside it!)
         commit_available < os_gstack_exn_guaranteed &&    // don't grow if not needed
-        available >= os_gstack_exn_guaranteed) {         
-      res = 1;
+        available >= os_gstack_exn_guaranteed) 
+    {         
+      res = MP_ACCESS;
     }
   }
 
-  if (res == 1 && (exncode == STATUS_STACK_OVERFLOW || exncode == MP_CPP_EXN)) {
+  if (res == MP_ACCESS && (exncode == STATUS_STACK_OVERFLOW || exncode == MP_CPP_EXN)) {
     // pointer in our gpool stack, make the page read-write
     // or, c++ throw and we need to guarantee stack size before the exception is being unwound.
     // use doubling growth; important for performance, see `main.cpp:test1M`.
@@ -336,7 +362,7 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
       }
     }
   }
-  else if (res == 2 && exncode == STATUS_ACCESS_VIOLATION) {
+  else if (res == MP_ACCESS_META && exncode == STATUS_ACCESS_VIOLATION) {
     // at the start of a gpool for zero'ing
     if (VirtualAlloc(page, os_page_size, MEM_COMMIT, PAGE_READWRITE) != NULL) {
       return EXCEPTION_CONTINUE_EXECUTION;

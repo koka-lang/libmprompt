@@ -35,6 +35,7 @@
 #define mp_atomic_cas(p,expected,desired)        mp_atomic(compare_exchange_strong)(p,expected,desired)
 #define mp_atomic_load(p)                        mp_atomic(load)(p)
 #define mp_atomic_store(p,x)                     mp_atomic(store)(p,x)
+#define mp_atomic_add(p,x)                       mp_atomic(fetch_add)(p,x)
 
 static inline void mp_atomic_yield(void);
 
@@ -68,8 +69,8 @@ typedef LONG     msc_intptr_t;
 #define MI_64(f) f
 #endif
 
-static inline bool mp_msvc_atomic_compare_exchange_strong(_Atomic(uintptr_t)*p, uintptr_t* expected, uintptr_t desired) {
-  uintptr_t read = (uintptr_t)MI_64(_InterlockedCompareExchange)((volatile msc_intptr_t*)p, (msc_intptr_t)desired, (msc_intptr_t)(*expected));
+static inline bool mp_msvc_atomic_compare_exchange_strong(_Atomic(intptr_t)*p, intptr_t* expected, intptr_t desired) {
+  intptr_t read = (intptr_t)MI_64(_InterlockedCompareExchange)((volatile msc_intptr_t*)p, (msc_intptr_t)desired, (msc_intptr_t)(*expected));
   if (read == *expected) {
     return true;
   }
@@ -79,11 +80,11 @@ static inline bool mp_msvc_atomic_compare_exchange_strong(_Atomic(uintptr_t)*p, 
   }
 }
 
-static inline uintptr_t mp_msvc_atomic_exchange(_Atomic(uintptr_t)*p, uintptr_t exchange) {
-  return (uintptr_t)MI_64(_InterlockedExchange)((volatile msc_intptr_t*)p, (msc_intptr_t)exchange);
+static inline intptr_t mp_msvc_atomic_exchange(_Atomic(intptr_t)*p, intptr_t exchange) {
+  return (intptr_t)MI_64(_InterlockedExchange)((volatile msc_intptr_t*)p, (msc_intptr_t)exchange);
 }
 
-static inline uintptr_t mp_msvc_atomic_load(_Atomic(uintptr_t) const* p) {
+static inline intptr_t mp_msvc_atomic_load(_Atomic(intptr_t) const* p) {
   #if defined(_M_IX86) || defined(_M_X64)
     return *p;
   #else
@@ -93,7 +94,7 @@ static inline uintptr_t mp_msvc_atomic_load(_Atomic(uintptr_t) const* p) {
   #endif
 }
 
-static inline void mp_msvc_atomic_store(_Atomic(uintptr_t)*p, uintptr_t x) {
+static inline void mp_msvc_atomic_store(_Atomic(intptr_t)*p, intptr_t x) {
   #if defined(_M_IX86) || defined(_M_X64)
     *p = x;
   #else
@@ -101,6 +102,11 @@ static inline void mp_msvc_atomic_store(_Atomic(uintptr_t)*p, uintptr_t x) {
   #endif
 }
 
+static inline intptr_t mp_msvc_atomic_add(_Atomic(intptr_t)*p, intptr_t x) {
+  return (intptr_t)MI_64(InterlockedAdd)((volatile msc_intptr_t*)p, (msc_intptr_t)x);
+}
+
+// ptr variants
 #define mp_atomic_load_ptr(tp,p)                (tp*)mp_atomic_load((_Atomic(uintptr_t)*)(p))
 #define mp_atomic_store_ptr(tp,p,x)             mp_atomic_store((_Atomic(uintptr_t)*)(p),(uintptr_t)x)
 #define mp_atomic_cas_ptr(tp,p,exp,des)         mp_atomic_cas((_Atomic(uintptr_t)*)(p),(uintptr_t*)exp,(uintptr_t)des)

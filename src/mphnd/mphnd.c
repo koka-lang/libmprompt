@@ -322,7 +322,7 @@ static void* mph_yield_to_internal(bool once, mph_handler_t* h, mph_yield_fun_t 
   mph_yield_env_t yenv = { h->local, fun, arg };
   mph_resume_env_t* renv = (mph_resume_env_t*)
                            (mph_likely(once) ? mp_yield(h->prompt, &mph_yield_fun, &yenv) 
-                                             : mp_myield(h->prompt, &mph_yield_fun, &yenv));
+                                             : mp_yieldm(h->prompt, &mph_yield_fun, &yenv));
  
   // and relink handlers once resumed
   h->parent = _mph_top;

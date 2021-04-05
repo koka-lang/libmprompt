@@ -17,12 +17,17 @@
 #include "internal/longjmp.h"       // mp_stack_enter
 #include "internal/gstack.h"
 
+#ifdef __cplusplus
+#include <exception>
+#endif
+
 /*------------------------------------------------------------------------------
    Growable stacklets
 ------------------------------------------------------------------------------*/
 
 // stack info; located just before the base of the stack
 struct mp_gstack_s {
+  mp_gstack_t* next;                // used for the cache and delay list
   uint8_t*    full;                 // stack reserved memory (including noaccess gaps)
   ssize_t     full_size;            // (for now always fixed to be `os_gstack_size`)
   uint8_t*    stack;                // stack inside the full area (without gaps)
@@ -49,8 +54,12 @@ static ssize_t os_gstack_gap              = 64 * MP_KIB;   // noaccess gap betwe
 static bool    os_gstack_reset_decommits  = false;         // force full decommit when resetting a stack?
 static ssize_t os_gstack_cache_count      = 4;             // number of prompts to keep in the thread local cache
 static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
-static ssize_t os_gpool_max_size          = 256 * MP_GIB;  // virtual size of one gstack pooled area (holds about 2^15 gstacks)
 
+#if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be lower than the system stack)
+static ssize_t os_gpool_max_size          = 16 * MP_GIB;   // virtual size of one gstack pooled area (holds about 2^15 gstacks)
+#else
+static ssize_t os_gpool_max_size          = 256 * MP_GIB;  // virtual size of one gstack pooled area (holds about 2^15 gstacks)
+#endif
 
 // Find base of an area in the stack
 static uint8_t* mp_base(uint8_t* sp, ssize_t size) {
@@ -85,9 +94,17 @@ static bool     mp_os_mem_commit(uint8_t* start, ssize_t size);
 
 // gpool interface
 typedef struct  mp_gpool_s mp_gpool_t;
-static int      mp_gpools_is_accessible(void* p, ssize_t* available, const mp_gpool_t** gp);
-static uint8_t* mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
-static void     mp_gpool_free(uint8_t* stk);
+
+typedef enum mp_access_e {
+  MP_NOACCESS,                    // no access (outside pool)
+  MP_NOACCESS_STACK_OVERFLOW,     // no access due to stack overflow (in gap)
+  MP_ACCESS,                      // access in a gstack
+  MP_ACCESS_META                  // access in initial meta data (the `free` stack)
+} mp_access_t;
+
+static mp_access_t  mp_gpools_check_access(void* p, ssize_t* available, const mp_gpool_t** gp);
+static uint8_t*     mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
+static void         mp_gpool_free(uint8_t* stk);
 
 // called by hook installed in os specific include
 static void     mp_gstack_thread_done(void);  
@@ -156,10 +173,31 @@ static bool mp_gstack_has_valid_canary(mp_gstack_t* g) {
 
 
 // We have a small cache per thread of stacks to avoid going to the OS too often.
-static mp_decl_thread mp_gstack_t** _mp_gstack_cache;
+static mp_decl_thread mp_gstack_t* _mp_gstack_cache;
+static mp_decl_thread ssize_t      _mp_gstack_cache_count;
+
 
 static ssize_t mp_gstack_initial_reserved(void) {
   return mp_align_up(sizeof(mp_gstack_t), 16);
+}
+
+
+// We have a delayed free list to keep gstacks alive during exception unwinding
+// it is cleared when: 1. another gstack is allocated, 2. clear_cache is called, 3. the thread terminates
+static mp_decl_thread mp_gstack_t* _mp_gstack_delayed_free;
+
+static void mp_gstack_clear_delayed(void) {
+  if (_mp_gstack_delayed_free == NULL) return;
+  #ifdef __cplusplus
+  if (std::uncaught_exception()) return; // don't clear while exceptions are active
+  #endif
+  mp_gstack_t* g = _mp_gstack_delayed_free;
+  while (g != NULL) {
+    mp_gstack_t* next = _mp_gstack_delayed_free = g->next;
+    mp_gstack_free(g, false);  // maybe move to cache
+    g = next;
+  }
+  mp_assert_internal(_mp_gstack_delayed_free == NULL);
 }
 
 // Allocate a growable stacklet.
@@ -167,20 +205,36 @@ mp_gstack_t* mp_gstack_alloc(void)
 {
   mp_gstack_init(NULL);  // always check initialization
   mp_assert(os_page_size != 0);
-  mp_gstack_t* g = NULL;
-
+  mp_gstack_clear_delayed();  // this might free some gstacks to our local cache
+  
   // first look in our thread local cache..
-  mp_gstack_t** cache = _mp_gstack_cache;
-  if (cache != NULL) {
-    for (int i = 0; i < os_gstack_cache_count; i++) {
-      g = cache[i];
-      if (g != NULL) {
-        cache[i] = NULL;
-        //mp_trace_message("found in cache: %p\n", g);
-        break;
-      }
+  mp_gstack_t* g = _mp_gstack_cache;
+  #if defined(NDEBUG)
+  // pick the head if available
+  if (g != NULL) {
+    _mp_gstack_cache = g->next;
+    _mp_gstack_cache_count--;
+    g->next = NULL;
+  }
+  #else
+  // only use a cached stack if it is under the parent stack (to help unwinding during debugging)
+  void* sp = (void*)&g;
+  mp_gstack_t* prev = NULL;
+  while (g != NULL) {
+    bool good = (os_stack_grows_down ? (void*)g < sp : sp < (void*)g);
+    if (good) {
+      if (prev == NULL) { _mp_gstack_cache = g->next; }
+                   else { prev->next = g->next; }
+      _mp_gstack_cache_count--;
+      g->next = NULL;
+      break;
+    }
+    else {
+      prev = g;
+      g = g->next;
     }
   }
+  #endif
 
   // otherwise allocate fresh
   if (g == NULL) {
@@ -204,6 +258,7 @@ mp_gstack_t* mp_gstack_alloc(void)
     memset(commit_start, 0xFD, os_gstack_initial_commit);
     #endif
     //mp_trace_message("alloc gstack: full: %p, base: %p, base_limit: %p\n", full, base, mp_push(base, stk_size,NULL));
+    g->next = NULL;
     g->full = full;
     g->full_size = os_gstack_size;
     g->stack = stk;
@@ -248,30 +303,37 @@ void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fu
 
 
 // Free a gstack
-void mp_gstack_free(mp_gstack_t* g) {
+void mp_gstack_free(mp_gstack_t* g, bool delay) {
   if (g == NULL) return;
   mp_assert(os_page_size != 0);
   //mp_trace_message("free gstack: %p\n", p);  
 
-  // first try to put it in our thread local cache...
-  mp_gstack_t** cache = _mp_gstack_cache;
-  if (cache != NULL) {
-    for (int i = 0; i < os_gstack_cache_count; i++) {
-      if (cache[i] == NULL) {
-        // free slot, use it
-        // If the cookie is valid, we assume the guard page was never hit and we don't need to do anything.
-        // Otherwise we decommit potentially committed memory of a deep stack to reduce memory pressure.
-        g->initial_reserved = mp_gstack_initial_reserved();  // reset reserved area
-        if (!mp_gstack_has_valid_canary(g)) {
-          // decommit
-          if (!mp_gstack_os_reset(g->full, g->stack, g->stack_size)) continue;
-        }
-        cache[i] = g;
-        return;
-      }
-    }
+  // if delayed, always push it on the delayed list
+  if (delay) {
+    g->next = _mp_gstack_delayed_free;
+    _mp_gstack_delayed_free = g;
+    return;
   }
 
+  // otherwise try to put it in our thread local cache...
+  if (_mp_gstack_cache_count < os_gstack_cache_count) {
+    // allowed to cache.
+    // If the cookie is valid, we assume the guard page was never hit and we don't need to do anything.
+    // Otherwise we decommit potentially committed memory of a deep stack to reduce memory pressure.
+    g->initial_reserved = mp_gstack_initial_reserved();  // reset reserved area
+    if (!mp_gstack_has_valid_canary(g)) {
+      // decommit
+      if (!mp_gstack_os_reset(g->full, g->stack, g->stack_size)) {
+        goto mp_free;
+      }
+    }
+    g->next = _mp_gstack_cache;
+    _mp_gstack_cache = g;
+    _mp_gstack_cache_count++;
+    return;
+  }
+
+mp_free:
   // otherwise free it to the OS
   mp_gstack_os_free(g->full);
 }
@@ -279,16 +341,16 @@ void mp_gstack_free(mp_gstack_t* g) {
 
 // Clear all (thread local) cached gstacks.
 void mp_gstack_clear_cache(void) {
-  mp_gstack_t** cache = _mp_gstack_cache;
-  if (cache != NULL) {
-    for (int i = 0; i < os_gstack_cache_count; i++) {
-      mp_gstack_t* gs = cache[i];
-      cache[i] = NULL;
-      if (gs != NULL) {
-        mp_gstack_os_free(gs->full);
-      }
-    }
+  mp_gstack_clear_delayed();
+  mp_gstack_t* g = _mp_gstack_cache;
+  while( g != NULL) {
+    mp_gstack_t* next = _mp_gstack_cache = g->next;
+    _mp_gstack_cache_count--;
+    mp_gstack_os_free(g->full);
+    g = next;
   }
+  mp_assert_internal(_mp_gstack_cache == NULL);
+  mp_assert_internal(_mp_gstack_cache_count == 0);
 }
 
 
@@ -403,9 +465,7 @@ bool mp_gstack_init(mp_config_t* config) {
 
 
 static void mp_gstack_thread_done(void) {
-  mp_gstack_clear_cache();
-  mp_free(_mp_gstack_cache);
-  _mp_gstack_cache = NULL;  
+  mp_gstack_clear_cache();  // also does mp_gstack_clear_delayed
 }
 
 static mp_decl_thread bool _mp_gstack_init;
@@ -413,11 +473,6 @@ static mp_decl_thread bool _mp_gstack_init;
 static void mp_gstack_thread_init(void) {
   if (_mp_gstack_init) return;  // already initialized?
   _mp_gstack_init = true;
-  mp_gstack_os_thread_init();
-  
-  // create cache
-  if (os_gstack_cache_count > 0) {
-    _mp_gstack_cache = (mp_gstack_t**)mp_zalloc((os_gstack_cache_count + 1) * sizeof(void*));
-  }
+  mp_gstack_os_thread_init();  
 }
 

@@ -170,19 +170,18 @@ mp_longjmp ENDP
 ; - gs:5240 the stack guarantee; set to limit on entry
 ; Before a call, we need to reserve 32 bytes of shadow space for the callee to spill registers in.
 
-; Push a trap frame so it can be unwound for a backtrace. (This is not quite enough for exception
-; unwinding since the stack limits in the thread local TIB are not updated. For exceptions we will 
-; need to catch and propagate manually through prompt points anyways). 
-; Todo: currently we do not update the frame when the return point changes.
+; Push a machine trap frame so it can be unwound for a backtrace in the debugger. 
+; (This is not quite enough for full exception unwinding since the stack limits in the thread local 
+;  TIB are not updated. For exceptions we will need to catch and propagate manually through prompt points anyways). 
 mp_stack_enter PROC FRAME
-  mov     r10, rsp          ; save rsp in r10
-  mov     r11, [r10]        ; rip     
+  mov     r10, rsp          ; save rsp in r10 (used to access arguments later on)
+  mov     rax, [rsp]        ; rip     
   
   ; switch stack
   and     rcx, NOT 15       ; align
   mov     rsp, rcx
   
-  push    r11               ; simulate call for unwinding
+  push    rax               ; simulate call for unwinding
 
   ; for the trap frame, we only need to set rsp and rip:
   ; <https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64>
@@ -192,14 +191,15 @@ mp_stack_enter PROC FRAME
   ; RSP+16  CS              ; we use stack reserved size (deallocation limit)
   ; RSP+8   RIP  
   ; RSP+0   error code      ; we use the return jmpbuf_t**
-  push    rcx
-  lea     rax, [r10+8]      ; return rsp (minus return address)
+  push    rcx               ; stack base (field:SS)
+  mov     r11, [r9]         ; load current jmpbut_t* 
+  mov     rax, [r11+8]      ; return rsp
   push    rax               
-  push    rdx
-  push    r8
-  push    r11               ; return rip
-  push    r9                ; return point
-  ; and fall through (with un-aligned stack)
+  push    rdx               ; stack commit limit (field:EFLAGS)
+  push    r8                ; stack reserved     (field:CS)
+  mov     rax, [r11]        ; return rip
+  push    rax
+  push    r9                ; return point (field:error code)
 
 .PUSHFRAME code            ; unwind rsp - 48
   sub     rsp, 40          ; reserve home area for calls + align
@@ -218,18 +218,20 @@ mp_stack_enter PROC FRAME
   ; we should never reach this...
   call    abort           
 
-  mov     rcx, [rsp+40]    ; load jmpbuf_t*
+  mov     rcx, [rsp+40]    ; load jmpbuf_t* 
   mov     rcx, [rcx]
-  jmp     mp_longjmp       ; and longjmp
+  jmp     mp_longjmp       ; and longjmp back to the current return point
 
 mp_stack_enter ENDP
 
-; unused plain version without machine frame
-mp_stack_enter_plain PROC FRAME 
+; version without machine frame using our own "mini trap frame" of just rsp+rip
+; works in vs2019 but not in windbg
+mp_stack_enter_mini PROC FRAME 
   mov     r10, rsp         ; old rsp
   mov     r11, [rsp]       ; rip
-  sub     rsp, 40          ; home area + align
-.ALLOCSTACK 40
+.PUSHREG rsp  
+  sub     rsp, 32          ; home area + align
+.ALLOCSTACK 32
 .ENDPROLOG
 
   mov     gs:[8], rcx      ; set new stack base
@@ -238,13 +240,17 @@ mp_stack_enter_plain PROC FRAME
 
   and     rcx, NOT 15      ; align new stack base
   mov     rsp, rcx         ; switch the stack
-  push    r11              ; help unwinding code by putting in return rip (remove?)
-  push    r9               ; save return jmpbuf_t**
+  mov     r8,  [r9]
+  mov     rax, [r8]
+  push    rax  
+  mov     rax, [r8+8]
+  sub     rax, 8           ; adjust for rip
+  push    rax
   sub     rsp, 32          ; home space 
 
   mov     rax, [r10+40]    ; fun
   mov     rcx, [r10+48]    ; set arg from old stack
-  xor     rdx, rdx         ; no trap frame
+  lea     rdx, [rsp+32]    ; mini trap frame: rsp + rip
   call    rax              ; and call the function (it should never return but use longjmp)
   
   ; we should never reach this...
@@ -254,7 +260,7 @@ mp_stack_enter_plain PROC FRAME
   mov     rcx, [rcx]       
   jmp     mp_longjmp
 
-mp_stack_enter_plain ENDP
+mp_stack_enter_mini ENDP
 
 
 END

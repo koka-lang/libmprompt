@@ -123,6 +123,11 @@ mpe_decl_export void* mpe_resume_final(mpe_resume_t* resume, void* local, void* 
 mpe_decl_export void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg);   // final resumption in tail position
 mpe_decl_export void  mpe_resume_release(mpe_resume_t* resume);                        // final resumption causing unwinding (raise unwind exception on resume)
 
+
+mpe_decl_export void* mpe_mask(mpe_effect_t eff, size_t from, mpe_actionfun_t* fun, void* arg);
+mpe_decl_export void* mpe_finally(void* local, mpe_releasefun_t* finally_fun, mpe_actionfun_t* fun, void* arg);
+
+
 /*-----------------------------------------------------------------
   Operation tags
 -----------------------------------------------------------------*/

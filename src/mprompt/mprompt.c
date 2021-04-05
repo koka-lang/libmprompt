@@ -17,9 +17,8 @@
 
 #ifdef __cplusplus
 #include <exception>
-#include <utility>
-#include <stdexcept>
 #endif
+
 
 
 //-----------------------------------------------------------------------
@@ -46,7 +45,6 @@ typedef struct mp_return_point_s {   // allocated on the parent stack (which per
   void*            arg;     // if yielding, the argument to the function; if returning, the result.
   #ifdef __cplusplus
   std::exception_ptr exn;   // returning with an exception to propagate
-  //std::exception* exn;
   #endif
 } mp_return_point_t;
 
@@ -56,11 +54,11 @@ typedef struct mp_return_point_s {   // allocated on the parent stack (which per
 //
 // A prompt can be in 2 states:
 // _active_:    top == NULL
-//              means the prompt and its gstack is part of propmt stack chain.
+//              means the prompt (and its gstack) is part of prompt stack chain.
 // _suspended_: top != NULL, resume_point != NULL
 //              This when being captured as a resumption. The `top` points to the end of the captured resumption.
-//              and the prompt (and children) are not part of the current stack chain.
-//              note that the prompt children are still in the _active_ state (but not part of a current execution stack chain)
+//              and the prompt (and its children) are not part of the current stack chain.
+//              note that the prompt children are still themselves in the _active_ state (but not part of a current execution stack chain)
 
 struct mp_prompt_s {  
   mp_prompt_t*  parent;     // parent: previous prompt up in the stack chain (towards bottom of the stack)
@@ -70,6 +68,8 @@ struct mp_prompt_s {
                             // note: the prompt structure itself is allocated at the base of the `gstack` to avoid a separate allocation.
   mp_return_point_t* return_point;  // return point in the parent (if not suspended..)
   mp_resume_point_t* resume_point;  // resume point for a suspended prompt chain. (the resume will be in the `top->gstack`)
+
+  mp_unwind_frame_t* unwind_frame;  // used to aid with unwinding on some platforms (windows only for now)
 };
 
 
@@ -81,8 +81,8 @@ struct mp_resume_s {
 // If resuming multiple times, the original stack is saved in a corresponding chain of prompt_save structures.
 typedef struct mp_prompt_save_s {
   struct mp_prompt_save_s* next;
-  mp_prompt_t*  prompt;
-  mp_gsave_t*   gsave;  
+  mp_prompt_t*             prompt;
+  mp_gsave_t*              gsave;  
 } mp_prompt_save_t;
 
 
@@ -97,9 +97,14 @@ typedef struct mp_mresume_s {
 } mp_mresume_t;
 
 
-
-// We use bit 2 in the pointers (assuming 8-byte minimal alignment) to distinguish resume-at-most-once from multi-shot resume
-// This way we do not need allocation of at-most-once resumptions while having a consistent interface.
+//-----------------------------------------------------------------------
+// Distinguish plain once-resumptions from multi-shot resumptions.
+//
+// We use bit 2 in the pointers (assuming 8-byte minimal alignment) to 
+// distinguish  resume-at-most-once from multi-shot resumptions. This way 
+// we do not need  allocation of at-most-once resumptions while still 
+// providing a consistent interface.
+//-----------------------------------------------------------------------
 
 // Is this a once resumption (returns NULL if not)
 static mp_prompt_t* mp_resume_is_once(mp_resume_t* r) {
@@ -123,6 +128,14 @@ static mp_resume_t* mp_resume_multi(mp_mresume_t* r) {
   return (mp_resume_t*)(((intptr_t)r) | 4);
 }
 
+
+//-----------------------------------------------------------------------
+// Initialize
+//-----------------------------------------------------------------------
+
+void mp_init(mp_config_t* config) {
+  mp_gstack_init(config);
+}
 
 
 //-----------------------------------------------------------------------
@@ -172,17 +185,18 @@ mp_prompt_t* mp_prompt_create(void) {
   p->gstack = gstack;
   p->resume_point = NULL;
   p->return_point = NULL;
+  p->unwind_frame = NULL;
   return p;
 }
 
 // Free a prompt and drop its children
-static void mp_prompt_free(mp_prompt_t* p) {
+static void mp_prompt_free(mp_prompt_t* p, bool delay) {
   mp_assert_internal(!mp_prompt_is_active(p));
   p = p->top;
   while (p != NULL) {
     mp_assert_internal(p->refcount == 0);
     mp_prompt_t* parent = p->parent;    
-    mp_gstack_free(p->gstack);
+    mp_gstack_free(p->gstack, delay);
     if (parent != NULL) {
       mp_assert_internal(parent->refcount == 1);
       parent->refcount--;
@@ -192,12 +206,22 @@ static void mp_prompt_free(mp_prompt_t* p) {
 }
 
 // Decrement the refcount (and free when it becomes zero).
-static void mp_prompt_drop(mp_prompt_t* p) {
+static void mp_prompt_drop_internal(mp_prompt_t* p, bool delay) {
   int64_t i = p->refcount--;
   if (i <= 1) {
-    mp_prompt_free(p);
+    mp_prompt_free(p, delay);
   }
 }
+
+static void mp_prompt_drop(mp_prompt_t* p) {
+  mp_prompt_drop_internal(p, false);
+}
+
+#ifdef __cplusplus
+static void mp_prompt_drop_delayed(mp_prompt_t* p) {
+  mp_prompt_drop_internal(p, true);
+}
+#endif
 
 // Increment the refcount
 static mp_prompt_t* mp_prompt_dup(mp_prompt_t* p) {
@@ -211,8 +235,13 @@ static inline mp_resume_point_t* mp_prompt_link(mp_prompt_t* p, mp_return_point_
   p->parent = mp_prompt_top();
   _mp_prompt_top = p->top;
   p->top = NULL;
-  if (ret != NULL) { p->return_point = ret; }                         
-              else { mp_assert_internal(p->return_point != NULL); }  // used for tail resumes
+  if (mp_likely(ret != NULL)) { 
+    p->return_point = ret; 
+    mp_unwind_frame_update(p->unwind_frame, &ret->jmp);
+  }                         
+  else {
+    mp_assert_internal(p->return_point != NULL);  
+  }
   mp_assert_internal(mp_prompt_is_active(p));  
   return p->resume_point;
 }
@@ -231,7 +260,6 @@ static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_poin
 }
 
 
-
 //-----------------------------------------------------------------------
 // Create an initial prompt
 //-----------------------------------------------------------------------
@@ -244,10 +272,11 @@ typedef struct mp_entry_env_s {
   void* arg;
 } mp_entry_env_t;
 
-static  void mp_prompt_stack_entry(void* penv, void* trap_frame) {
-  MP_UNUSED(trap_frame);
+static  void mp_prompt_stack_entry(void* penv, mp_unwind_frame_t* unwind_frame) {
+  MP_UNUSED(unwind_frame);
   mp_entry_env_t* env = (mp_entry_env_t*)penv;
   mp_prompt_t* p = env->prompt;
+  p->unwind_frame = unwind_frame;
   //mp_prompt_stack_entry(p, env->fun, env->arg);
   #ifdef __cplusplus
   try {
@@ -297,8 +326,7 @@ static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, m
     #ifdef __cplusplus
     mp_assert_internal(ret->kind == MP_EXCEPTION);
     mp_trace_message("rethrow propagated exception again (from prompt %p)..\n", p);
-    mp_prompt_drop(p);
-    //mp_throw_prepare(); 
+    mp_prompt_drop_delayed(p);
     std::rethrow_exception(ret->exn);
     #else
     mp_unreachable("invalid return kind");
@@ -425,8 +453,8 @@ int mp_resume_should_unwind(mp_resume_t* resume) {
 
 // Yield to a prompt with a certain resumption kind. Once yielded back up, execute `fun(arg)`
 static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
-  mp_assert_internal(mp_prompt_is_active(p)); // can only yield to an active prompt
-  mp_assert_internal(mp_prompt_is_ancestor(p));
+  mp_assert(mp_prompt_is_ancestor(p));           // can only yield up to an ancestor
+  mp_assert_internal(mp_prompt_is_active(p));    // can only yield to an active prompt
   // set our resume point (Y)
   mp_resume_point_t res;
   if (mp_setjmp(&res.jmp)) {
@@ -451,7 +479,7 @@ void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
 }
 
 // Yield back to a prompt with a `mp_resume_t` resumption.
-void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
+void* mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
   return mp_yield_internal(MP_YIELD_MULTI, p, fun, arg);
 }
 
@@ -559,27 +587,120 @@ static void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
   }
 }
 
+
 //-----------------------------------------------------------------------
-// Initialize
+// Backtrace
 //-----------------------------------------------------------------------
 
-//#ifdef _WIN32
-//#include <windows.h>
-//void mp_throw_prepare(void) {
-//  //ULONG guarantee = 32 * MP_KIB;
-//  //SetThreadStackGuarantee(&guarantee);
-//  //NT_TIB* tib = (NT_TIB*)NtCurrentTeb();
-//  //tib->StackLimit = *((void**)((uint8_t*)tib + 5240));//  
-//  //tib->StackBase = ((uint64_t*)NULL - 1);
-//  //*((void**)((uint8_t*)tib + 5240)) = NULL;    
-//}
-//#else
-//void mp_throw_prepare(void) {}
-//#endif
+#if defined(_WIN32)
 
-void mp_init(mp_config_t* config) {
-  //ULONG guarantee = 32 * MP_KIB;
-  //SetThreadStackGuarantee(&guarantee);
-  // mp_throw_prepare();
-  mp_gstack_init(config);
+#include <windows.h>
+// On windows, CaptureStackBackTrace only captures to the first prompt 
+// (probably due to stack extent checks stored in the TIB?). 
+// To return a proper backtrace, we can yield up to each parent prompt and 
+// recursively capture partial backtraces at each point.
+typedef struct mp_yield_backtrace_env_s {
+  void** bt;
+  int    len;
+} mp_yield_backtrace_env_t;
+
+static int mp_win_backtrace(void** bt, int len, int skip);
+
+static void* mp_yield_backtrace(mp_resume_t* resume, void* envarg) {
+  mp_yield_backtrace_env_t* env = (mp_yield_backtrace_env_t*)envarg;
+  intptr_t n = mp_win_backtrace(env->bt, env->len, 1 /* don't include yield_backtrace */);
+  return mp_resume_tail(resume, (void*)n);
 }
+
+static int mp_win_backtrace(void** bt, int len, int skip) {
+  if (len <= 0) return 0; // done
+  int n = (int)CaptureStackBackTrace(skip + 1 /* don't include our own frame */, len, bt, NULL);
+  if (n <= 0 || n >= len) return n;
+  // check if we have more parent frames in a parent prompt
+  mp_prompt_t* p = mp_prompt_top();
+  if (p == NULL) return n;  // no more frames available
+  // yield recursively up to get more frames
+  mp_yield_backtrace_env_t env = { bt + n, len - n };
+  intptr_t m = (intptr_t)mp_yield(p, &mp_yield_backtrace, &env);
+  mp_assert_internal(m + n <= len);
+  return (int)(n + m);
+}
+
+int mp_backtrace(void** bt, int len) {
+  return mp_win_backtrace(bt, len, 1 /* don't include mp_backtrace */ );
+}
+
+#elif defined(__MACH__)
+
+// On macOS, standard backtrace fails cross the prompt boundaries (despite proper dwarf info).
+// We use a similar strategy as on windows recursively yielding up and 
+// capturing backtraces per prompt using the standard unwind provided on macOS.
+// Note, we could just unwind directly but that is not always working in release mode.
+
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
+
+typedef struct mp_yield_backtrace_env_s {
+  void** bt;
+  int    len;
+} mp_yield_backtrace_env_t;
+
+static int mp_mach_backtrace(void** bt, int len);
+
+static void* mp_yield_backtrace(mp_resume_t* resume, void* envarg) {
+  mp_yield_backtrace_env_t* env = (mp_yield_backtrace_env_t*)envarg;
+  intptr_t n = mp_mach_backtrace(env->bt, env->len);
+  return mp_resume_tail(resume, (void*)n);
+}
+
+static int mp_mach_unw_backtrace(void** bt, int len, int skip) {
+  unw_cursor_t cursor; 
+  unw_context_t uc;  
+  unw_getcontext(&uc);
+  unw_init_local(&cursor, &uc);
+  int count = 0;
+  while (count < len && unw_step(&cursor) > 0) {
+    unw_word_t ip;
+    unw_get_reg(&cursor, UNW_REG_IP, &ip);
+    if (skip > 0) {
+      skip--;
+    }
+    else {     
+      bt[count++] = (void*)ip;
+    }
+    unw_proc_info_t pinfo;
+    unw_get_proc_info(&cursor, &pinfo);
+    if ((void*)pinfo.start_ip == &mp_stack_enter) break;
+  }
+  return count;
+}
+
+static int mp_mach_backtrace(void** bt, int len) {
+  if (len <= 0) return 0; // done
+  int n = mp_mach_unw_backtrace(bt,len, 2);
+  if (n <= 0 || n >= len) return n;
+  // check if we have more parent frames in a parent prompt
+  mp_prompt_t* p = mp_prompt_top();
+  if (p == NULL) return n;  // no more frames available
+  // yield recursively up to get more frames
+  mp_yield_backtrace_env_t env = { bt + n, len - n };
+  intptr_t m = (intptr_t)mp_yield(p, &mp_yield_backtrace, &env);
+  mp_assert_internal(m + n <= len);
+  return (int)(n + m);
+}
+
+int mp_backtrace(void** bt, int len) {
+  return mp_mach_backtrace(bt, len);
+}
+
+
+#else
+
+// Linux, etc. 
+// Unwinding works as is (due to reliable dwarf unwind info and no stack limits in the thread local data)
+#include <execinfo.h>
+int mp_backtrace(void** bt, int len) {
+  return backtrace(bt, len);
+}
+
+#endif

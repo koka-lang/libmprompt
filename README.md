@@ -2,7 +2,7 @@
 
 
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
-Latest release: v0.2, 2021-03-29.
+Latest release: v0.4, 2021-04-04.
 
 A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
@@ -14,16 +14,19 @@ as smaller systems do not have enough virtual address space.
 
 There are two libraries provided:
 
-- `libmprompt`: the primitive library that provides 
-  multi-prompt control. This has well-defined semantics and is the
+- `libmprompt`: the primitive library that provides multi-prompt delimited control. 
+  The multi-prompt abstraction has well-defined semantics and is the
   minimal control abstraction that can be typed with simple types.
+  As such, we view the `libmprompt` library as a good API that should be provided
+  by the OS or language runtime to provide generic and sound delimited control.
   `libmpromptx` is the C++ compiled variant that integrates exception handling
   where exceptions are propagated correctly through the gstacks.
-
+  
 - `libmpeff`: a small example library that uses `libmprompt` to implement
-  efficient algebraic effect handlers in C (with a similar interface as [libhandler]).
+  efficient algebraic effect handlers (with a similar interface as [libhandler]).
+  This is an easier abstraction to program with using multi-prompts directly.
 
-Particular aspects:n
+Particular aspects:
 
 - The goal is to be fully compatible with C/C++ semantics and to be able to
   link to this library and use the multi-prompt abstraction _as is_ without special
@@ -43,9 +46,7 @@ Particular aspects:n
 - A drawback of our implementation is that it requires 64-bit systems in order to have enough
   virtual address space. Moreover, at miminum 4KiB of memory is committed per 
   (active) prompt. On systems without "overcommit" we use internal _gpools_ to 
-  still be able to commit stack space on-demand using a special signal handler. 
-  Another drawback is that debug/exception unwinding is fragile when using multiple stacks
-  on various platforms, and we are still working on making it more robust.
+  still be able to commit stack space on-demand using a special signal handler.   
 
 - We aim to support millions of prompts with fast yielding and resuming. If we run
   the [`mp_async_test1M`](test/main.c#L82) test we simulate an asynchronous
@@ -57,29 +58,32 @@ Particular aspects:n
   ```
   run 10M connections with 10000 active at a time, each using 32kb stack...
   total stack used: 312500.000mb, count=10000000
-  elapsed: 1.158s, user: 1.109s, sys: 0.049s, rss: 42mb, main rss: 39mb
+  elapsed: 0.932s, user: 0.883s, sys: 0.049s, rss: 42mb, main rss: 39mb
   ```
-  This is about 8M "connections" per second (single threaded, Ubuntu 20, AMD5950X),
+  This is about 10M "connections" per second (single threaded, Ubuntu 20, AMD5950X),
   where each connection creates a fresh prompt and context switches 4 times.
 
 
 Enjoy,
   Daan Leijen and KC Sivaramakrishnan.
 
+Releases:
+- 2021-04-04: `v0.4`: initial support for Linux arm64.
+- 2021-04-03: `v0.3`: better backtraces on Windows, support libunwind.
+- 2021-04-01: `v0.2`: improved debugging on macOS with `lldb`.
+- 2021-03-30: `v0.1`: initial release.
 
-Todos:
-- Proper backtrace support in debuggers
-- Test on arm64.
-- ...
 
 [split]: https://gcc.gnu.org/wiki/SplitStacks
 [libhandler]: https://github.com/koka-lang/libhandler
 [backtraces]: #backtraces
 [semantics]: #semantics
 
-## Building
+# Building
 
-### Linux and macOS
+Tested on Linux (amd64 and arm64), macOS (amd64), and Windows (amd64).
+
+## Linux and macOS
 
 We use `cmake` to build:
 
@@ -96,32 +100,29 @@ This will build the libraries `libmpromptx.a` and `libmpeffx.a`.
 Pass the option `cmake ../.. -DMP_USE_C=ON` to build the C versions of the libraries
 (but these do not handle- or propagate exceptions).
 
-### Windows
+## Windows
 
 We use Visual Studio 2019 to develop the library -- open the solution 
 in `ide/vs2019/libmprompt.sln` to build and test.
 
-### Issues
+## Issues
 
 Some known issues are:
 
-- `gdb`, `lldb`: when using _gpools_ you will see segmentation fault errors (`SEGV`)
-  which happen when demand paging stack memory; you need to continue through those
-  or set the debugger to ignore them (enter `handle SIGSEGV nostop` in `gdb`).
+- `gdb`, `lldb`: when debugging (with _gpools_ enabled) on Linux you may see 
+  segmentation fault errors (`SEGV`) which happen when demand paging stack memory; 
+  you need to continue through those or set the debugger to ignore them 
+  (enter `handle SIGSEGV nostop` in `gdb`).
   
-- `lldb` on macOS is unable to continue after a demand-page `SEGV`
-  due to a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868).
-  A workaround is to set the gstack initial commit high enough to avoid 
-  demand paging during debugging (use `config.stack_initial_commit=64*1024L;` for [example](test/main.c#L30)).
-
+- `lldb`: debugging on macOS has no such issue, but in debug mode we use an extra thread
+  to handle Mach exceptions (to avoid a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868) in `lldb`).
+  
 - On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably. 
-  Backtraces in Visual Studio only span over prompts if the parent prompt happens 
-  to be at a higher address.
+  Backtraces in Visual Studio (and `windbg`) work well but sometimes the debugger stops 
+  a backtrace too soon when libmprompt is unable to put a gstack at a lower address than its parent.
 
 
-## Libmprompt
-
-### C Interface
+# Libmprompt C Interface
 
 ```C
 // Types
@@ -146,11 +147,43 @@ void  mp_resume_drop(mp_resume_t* resume);
 
 ```C
 // Multi-shot resumptions; use with care in combination with linear resources.
-void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
+void*        mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
 mp_resume_t* mp_resume_dup(mp_resume_t* r);
+
+// Portable backtrace
+int mp_backtrace(void** backtrace, int len);
 ```
 
-### Semantics
+
+## Backtraces
+
+A nice property of muli-prompts is that there is always
+a single strand of execution, together with suspended prompts.
+In contrast to lower level abstractions, like fibers, there is no 
+arbitrary switching between stacks: one can only yield up to a
+parent prompt (capturing all gstacks up to that prompt) or 
+resume a suspended prompt chain (and restoring all gstacks in that context).
+As a consequence, the active chain of prompts always form a logical stack 
+and we can have natural propagation of exceptions with proper backtraces.
+
+Here is an example of a backtrace on Linux:
+
+<img src="doc/backtrace2.jpg" width=600px>
+
+Here a breakpoint was set in code that was resumed
+where the backtrace continues into the main stack. This is quite nice
+for debugging compared to callback based programming for example.
+
+Here is a backtrace in the Visual Studio debugger:
+
+<img src="doc/backtrace3.jpg" width=600px>
+
+(Unfortunately, on Windows, in rare cases a backtrace can still be cut short 
+when libmprompt is unable to place a gstack at a lower address as its parent.)
+
+
+
+## Semantics
 
 The semantics of delimited multi-prompt control 
 can be described precisely:
@@ -215,13 +248,16 @@ For example:
 |----> 43
 ```
 
-At runtime, yielding to a prompt that is no longer in scope (i.e.
-in the evalution context) is an error (e.g. like an unhandled exception).
-(Note: in the C implementation, the unique markers `m` are simply
-represented directly by a `mp_prompt_t*`).
+In the C implementation, the unique markers `m` are simply
+represented directly by a `mp_prompt_t*`.
+At runtime, yielding to a prompt that is no longer in scope, 
+or to a prompt that is not an ancestor (i.e. not in your
+evaluation context), is an error (e.g. like an unhandled exception).
+(Effect type systems, like in [Koka], can prevent this situation
+statically at compile-time but in our library this is a runtime error).
 
-These primitives are very expressive but can still be strongly
-typed in simply typed lambda calculus and are thus sound and
+These primitives are very expressive but can still be
+typed in in simply typed lambda calculus, and are sound and
 composable:
 ```haskell
 prompt :: (Marker a -> a) -> a               
@@ -234,7 +270,7 @@ When yielding to a marker of type `a`, the yielded function has type `(b -> a) -
 and must return results of type `a` (corresponding to the marker context).
 Meanwhile, the passed in resumption function `(b -> a)` expects an argument
 of type `b` to resume back to the yield point. Such simple types cannot be 
-given for example to any of `shift`/`reset`, `call/cc`, fibers, or |co-routines, 
+given for example to any of `shift`/`reset`, `call/cc`, fibers, or co-routines, 
 which is one aspect why we believe multi-prompt delimited control is preferable.
 
 The growable gstacks are used to make capturing- and resuming
@@ -248,7 +284,7 @@ see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Lei
 ([pdf](https://www.microsoft.com/en-us/research/publication/generalized-evidence-passing-for-effect-handlers/)).
 
 
-### An implementation based on in-place growable stacks
+## An implementation based on in-place growable stacks
 
 Each prompt starts a growable gstack and executes from there.
 For example, we can have:
@@ -404,119 +440,85 @@ also how exceptions are propagated):  (rule `(RETURN)`)
 
 See [`mprompt.c`](src/mprompt/mprompt.c) for the implementation of this.
 
+## An Example
 
-### Low-level layout of gstacks
+Here is a minimal example of running `N` "async" workers over `M` requests
+using resumptions as first-class values stored in the `workers` array:
 
-#### Windows
+```C
+#include <stdio.h>
+#include <stdint.h>
+#include <mprompt.h>
 
-On Windows, a gstack is allocated as:
+#define N 1000       // max active async workers
+#define M 1000000    // total number of requests
 
-```ioke
-|------------|
-| xxxxxxxxxx | <-- noaccess gap (64 KiB by default)
-|------------| <-- base
-| committed  |
-| ...        | <-- sp
-|------------|
-| guard page |
-|------------|
-| reserved   | (committed on demand)
-| ...        |
-.            .
-.            .
-|------------| <-- limit 
-| xxxxxxxxxx | 
-|------------| <-- 8MiB by default
-```
-The guard page at the end of the committed area will
-move down into the reserved area to commit further stack pages on-demand. 
+static void* await_result(mp_resume_t* r, void* arg) {
+  return r;  // instead of resuming ourselves, we return the resumption as a "suspended async computation" (A)
+}
 
-If enabling gpools ([`config.gpool_enable`](test/main.c#L28)), the layout of the stack is the same but there are two differences: (1) the stacks will grow more aggressive doubling the committed area every time (up to 1MiB) which can help performance, and (2), the stack memory is reused in the process which can be more efficient than allocating from the OS from scratch (which needs to re-zero pages for example).
+static void* async_worker(mp_prompt_t* parent, void* arg) {
+  // start a fresh worker
+  // ... do some work
+  intptr_t partial_result = 0;
+  // and await some request; we do this by yielding up to our prompt and running `await_result` (in the parent context!)
+  mp_yield( parent, &await_result, NULL );
+  // when we are resumed at some point, we do some more work 
+  // ... do more work
+  partial_result++;
+  // and return with the result (B)
+  return (void*)(partial_result);
+}
 
-#### Linux and macOS
+static void async_workers(void) {
+  mp_resume_t** workers = (mp_resume_t**)calloc(N,sizeof(mp_resume_t*));  // allocate array of N resumptions
+  intptr_t count = 0;
+  for( int i = 0; i < M; i++) {  // perform M connections
+    int j = i % N;               // pick an active worker
+    // if the worker is actively waiting (suspended), resume it
+    if (workers[j] != NULL) {  
+      count += (intptr_t)mp_resume(workers[j], NULL);  // (B)
+      workers[j] = NULL;
+    }
+    // and start a fresh worker and wait for its first yield (suspension). 
+    // the worker returns its own resumption as a result.
+    if (i < (M - N)) {
+      workers[j] = (mp_resume_t*)mp_prompt( &async_worker, NULL );  // (A)
+    }
+  }
+  printf("ran %zd workers\n", count);
+}
 
-On `mmap` based systems the layout depends whether gpools
-are enabled. If gpools are enabled (which is automatic of the
-OS has no overcommit), the layout is:
-
-```ioke
-|------------|
-| xxxxxxxxxx |
-|------------| <-- base
-| committed  |
-| ...        | <-- sp
-|------------|
-| reserved   | (committed on demand)
-|            |
-.            .
-.            .
-|------------| <-- limit
-| xxxxxxxxxx |
-|------------|
-```
-
-The `reserved` space is committed on-demand using a signal
-handler where the gpool allows the handler to determine
-reliably whether a stack can be grown safely (up to the `limit`). 
-(As described earlier, this also allows a stack in a gpool to 
-grow through doubling which can be more performant, as well as 
-allow better reuse of allocated stack memory.)
-
-If the OS has overcommit (and gpools are not enabled explicitly),
-the gstack is allocated instead as fully committed from the start
-(with read/write access):
-
-
-```ioke
-|------------|
-| xxxxxxxxxx |
-|------------| <-- base
-| committed  |
-| ...        | <-- sp
-|            |
-|            |
-.            .
-.            .
-|------------| <-- limit
-| xxxxxxxxxx |
-|------------|
+int main(int argc, char** argv) {
+  async_workers();
+  return 0;
+}
 ```
 
-This is simpler than gpools, as no signal handler is required.
-However it will count 8MiB for each stack against the virtual commit count,
-even though the actual physical pages are only committed on-demand
-by the OS. This may lead to trouble if 
-the [overcommit limit](https://www.kernel.org/doc/Documentation/vm/overcommit-accounting) 
-is set too low.
 
 
-## Backtraces
-
-A nice property of muli-prompts is that there is always
-a single strand of execution, together with suspended prompts.
-In contrast to lower level abstractions, like fibers, there is no 
-arbitrary switching between stacks: one can only yield up to a
-parent prompt (capturing all gstacks up to that prompt) or 
-resume a suspended prompt chain (and restoring all gstacks in that context).
-As a consequence, the active chain of prompts always form a logical stack 
-and we can have natural propagation of exceptions with proper backtraces.
-
-Here is an example of a backtrace on Linux:
-
-<img src="doc/backtrace2.jpg" width=600px>
-
-Here a breakpoint was set in code that was resumed
-where the backtrace continues into the main stack. This is quite nice
-for debugging compared to callback based programming for example.
-
-(Unfortunately, full backtraces are not yet working on Windows with Visual Studio).
-
-
-## The libmpeff Interface
+# The libmpeff Interface
 
 A small library on top of `libmprompt` that implements
 algebraic effect handlers. Effect handlers give more structure
-than basic multi-prompts and are easier to use.
+than basic multi-prompts and are a better abstraction for
+programming. In particular, 
+
+- You do not need the particular prompt marker, but always
+  yield to the innermost handler for a particular effect. This 
+  is much more convenient and is essential for example model
+  dynamically bound state (much like implicit parameters).
+
+- All potential operations are bound statically at the handler
+  and you always yield to a particular operation providing arguments
+  (where the handler definition is basically a v-table with a slot for every operation).
+  This makes it easier to reason about than using a multi-prompt
+  yield which can yield with any arbitrary function.
+
+- As effect handlers are linked on the stack, this abstraction
+  can be used across libraries/languages and is thus more
+  composable than using multi-prompts directly.
+
 See [`effects.c`](test/effects.c) for many examples of common 
 effect patterns.
 
@@ -565,3 +567,5 @@ typedef struct mpe_handlerdef_s {
   mpe_operation_t   operations[8];
 } mpe_handlerdef_t;
 ```
+
+[Koka]: https://koka-lang.github.io

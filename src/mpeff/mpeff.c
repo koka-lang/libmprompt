@@ -71,10 +71,9 @@ static inline void mpe_free(void* p) {
 
 // Resumption kinds: used to avoid allocation etc.
 typedef enum mpe_resumption_kind_e {
-  MPE_RESUMPTION_NEVER,
-  MPE_RESUMPTION_INPLACE,
-  MPE_RESUMPTION_SCOPED_ONCE,
-  MPE_RESUMPTION_ONCE,
+  MPE_RESUMPTION_INPLACE,           
+  MPE_RESUMPTION_SCOPED_ONCE,       
+  MPE_RESUMPTION_ONCE,              
   MPE_RESUMPTION_MULTI
 } mpe_resumption_kind_t;
 
@@ -87,6 +86,7 @@ struct mpe_resume_s {
     mph_resume_t* resume;
   } mp;
 };
+
 
 
 
@@ -187,6 +187,7 @@ static void* mpe_perform_yield_to_multi(mph_handler_t* mph, const mpe_operation_
 }
 
 
+
 // ------------------------------------------------------------------------------
 // Perform
 // ------------------------------------------------------------------------------
@@ -224,8 +225,6 @@ static void* mpe_perform_at(mph_handler_t* mph, mpe_optag_t optag, void* arg) {
   }
 }
 
-
-
 static mpe_decl_noinline void* mpe_unhandled_operation(mpe_optag_t optag) {
   fprintf(stderr, "unhandled operation: %s\n", mpe_optag_name(optag));
   return NULL;
@@ -248,9 +247,9 @@ void* mpe_perform(mpe_optag_t optag, void* arg) {
 // Pass arguments down in a closure environment
 struct mpe_handle_start_env {
   const mpe_handlerdef_t* hdef;
-  void* local;
+  void*            local;
   mpe_actionfun_t* body;
-  void* arg;
+  void*            arg;
 };
 
 // Start a handler

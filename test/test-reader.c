@@ -5,6 +5,17 @@
   found in the "LICENSE" file at the root of this distribution.
 -----------------------------------------------------------------------------*/
 #include "test.h"
+   
+static long stack_use(uint8_t* p, long kb) {
+  if (kb <= 4) {    
+    return reader_ask();
+  }
+
+  if (p != NULL) p[4095] = 1;
+  uint8_t arr[4096];
+  arr[4095] = 0;
+  return stack_use(arr,kb - 4);
+}
 
 /*-----------------------------------------------------------------
   Example programs
@@ -12,7 +23,8 @@
 
 void* reader_action(void* arg) {
   UNUSED(arg);
-  return mpe_voidp_long( reader_ask() + reader_ask() );
+  long i = stack_use(NULL,64);
+  return mpe_voidp_long( i + reader_ask());
 }
 
 /*-----------------------------------------------------------------

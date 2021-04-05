@@ -21,6 +21,7 @@ static void mp_test2(void);
 static void mp_test1M(void);
 static void mp_async_test1M(void);
 
+
 int main(int argc, char** argv) {
   printf("main\n");
   
@@ -28,6 +29,7 @@ int main(int argc, char** argv) {
   //config.gpool_enable = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
   //config.stack_initial_commit = 64 * 1024L;   // use when debugging with lldb on macOS
+  //config.stack_cache_count = -1;
   mp_init(&config);
 
   size_t start_rss = 0;
@@ -48,10 +50,15 @@ int main(int argc, char** argv) {
   // multi-shot tests
   amb_run();
   amb_state_run();
-  nqueens_run();  
+  nqueens_run();
+
+  // threaded test (C++ only)
+  thread_rehandle_run();
+  
+  // direct mprompt tests
+  //mp_async_test1M();  // async workers
 
   // low-level mprompt tests
-  //mp_async_test1M();  // async workers
   //mp_test1()
   //mp_test2();
   //mp_test1M();
@@ -78,7 +85,6 @@ static __noinline void* get_stack_top(void) {
   return as_stack_address(&top);
 }
 
-
 static void stack_use(long totalkb) {
   uint8_t* sp = (uint8_t*)get_stack_top();
   size_t page_size = 4096;
@@ -94,13 +100,13 @@ static void stack_use(long totalkb) {
 // then perform "work" (use stack space) and finish; and are then replaced
 // by a fresh connection.
 
-static void* await_result(mp_resume_t* r, void* arg) {
+static void* await_resultx(mp_resume_t* r, void* arg) {
   return r;  // just return the resumption as a "suspended async computation"
 }
 
 
-static void* async_worker(mp_prompt_t* p, void* arg) {
-  long kb = mpe_long_voidp( mp_yield(p, &await_result, arg) );  // wait for some result
+static void* async_workerx(mp_prompt_t* p, void* arg) {
+  long kb = mpe_long_voidp( mp_yield(p, &await_resultx, arg) );  // wait for some result
   stack_use(kb);                                                // and perform "work"
   return mpe_voidp_long(1);
 }
@@ -113,7 +119,7 @@ static void mp_async_test1M(void) {
   printf("async_test1M set up...\n");
   mp_resume_t** rs = (mp_resume_t**)calloc(activeN, sizeof(mp_prompt_t*));
   for (size_t i = 0; i < activeN; i++) {
-    rs[i] = (mp_resume_t*)mp_prompt(&async_worker, NULL);
+    rs[i] = (mp_resume_t*)mp_prompt(&async_workerx, NULL);
   }
 
   printf("run %zuM connections with %zu active at a time, each using %ldkb stack...\n", totalN / 1000000, activeN, stack_kb);
@@ -123,7 +129,7 @@ static void mp_async_test1M(void) {
   for (size_t i = 0; i < totalN; i++) {
     size_t j = i % activeN;
     count += mpe_long_voidp(mp_resume(rs[j], mpe_voidp_long(stack_kb)));  // do the work
-    rs[j] = (mp_resume_t*)mp_prompt(&async_worker, NULL); // and create a new one
+    rs[j] = (mp_resume_t*)mp_prompt(&async_workerx, NULL); // and create a new one
     //if (i % 1000 == 0) printf("todo: %5zu ...\n", N - i);
   }
   //mpt_show_process_info(stdout, start, start_rss);
@@ -131,6 +137,8 @@ static void mp_async_test1M(void) {
   double total_mb = (double)(totalN*stack_kb) / 1024.0;
   printf("total stack used: %.3fmb, count=%ld\n", total_mb, count);
 }
+
+
 
 
 /*

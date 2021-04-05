@@ -7,13 +7,12 @@ project(libmimalloc C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 14)
 
-option(MP_USE_C  "Build C versions of the library without exception support" OFF)
-
-set(mp_version "0.1")
+option(MP_USE_C             "Build C versions of the library without exception support" OFF)
+set(mp_version "0.4")
 
 # sources are included in a single file to get better codegen and enable single object files for linking
 set(mprompt_sources  src/mprompt/main.c)
-    # util.c gstack-pool.c gstack-win/mmap.c gstack.c mprompt.c
+    # util.c gstack_pool.c gstack_win.c gstack_mmap.c gstack_mmap_mach.c gstack.c mprompt.c
 
 set(mphnd_sources    src/mphnd/main.c)
     # src/mphnd/mphnd.c
@@ -88,12 +87,14 @@ if (mp_proc MATCHES "(x86_64)|(amd64)")
     set(mprompt_asm_source src/mprompt/asm/longjmp_amd64_win.asm)
     enable_language(ASM_MASM)
   else()
-    set(mprompt_asm_source src/mprompt/asm/longjmp_amd64.s)
+    set(mprompt_asm_source src/mprompt/asm/longjmp_amd64.S)
   endif()
 else()
   if (mp_proc MATCHES "(aarch64)|(arm64)")
-    message(WARNING "arm64 support is experimental")
-    set(mprompt_asm_source src/mprompt/asm/longjmp_arm64.s)
+    if (APPLE)
+      message(WARNING "arm64 support on Apple is untested")
+    endif()
+    set(mprompt_asm_source src/mprompt/asm/longjmp_arm64.S)
   else()
     message(WARNING "unsupported architecture: ${mp_proc}")    
   endif()
@@ -118,7 +119,9 @@ endif()
 # -----------------------------------------------------------------------------
 # Flags
 # -----------------------------------------------------------------------------
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+if((CMAKE_BUILD_TYPE MATCHES "Release") OR ((CMAKE_BUILD_TYPE MATCHES "RelWithDebInfo") AND NOT APPLE))
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+endif()
 
 if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
   list(APPEND mp_cflags -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
@@ -195,6 +198,7 @@ target_include_directories(mpeff PUBLIC
 if (NOT WIN32)
   target_link_libraries(mpeff PUBLIC pthread)
 endif()
+
 
 # tests
 add_executable(mptest ${test_sources})

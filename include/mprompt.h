@@ -54,7 +54,7 @@ mp_decl_export void  mp_resume_drop(mp_resume_t* resume);               // drop 
 // Multi-shot resumptions; use with care in combination with linear resources.
 //---------------------------------------------------------------------------
 
-mp_decl_export void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
+mp_decl_export void* mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
 mp_decl_export mp_resume_t* mp_resume_dup(mp_resume_t* r);              // only myield resumptions can be dup'd
 
 
@@ -89,11 +89,18 @@ mp_decl_export void mp_init(mp_config_t* config);
 // (only `mp_mresume_should_unwind` is required by `libmphandler`)
 //---------------------------------------------------------------------------
 
+// Get a portable backtrace
+mp_decl_export int          mp_backtrace(void** backtrace, int len);
+
+// Reference count of a resumption
 mp_decl_export long         mp_resume_resume_count(mp_resume_t* r);
 mp_decl_export int          mp_resume_should_unwind(mp_resume_t* r);  // refcount==1 && resume_count==0
 
+// Separate prompt creation
 mp_decl_export mp_prompt_t* mp_prompt_create(void);
 mp_decl_export void*        mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg);
+
+// Walk the chain of prompts.
 mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
 
 
@@ -101,8 +108,7 @@ mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
 //---------------------------------------------------------------------------
 // Misc
 //---------------------------------------------------------------------------
-
-// to be fixed... 
+ 
 #define mp_throw    throw
 #ifdef _WIN32
 #include <stdint.h>
