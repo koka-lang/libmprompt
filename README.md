@@ -2,7 +2,7 @@
 
 
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
-Latest release: v0.3, 2021-04-03.
+Latest release: v0.4, 2021-04-04.
 
 A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
@@ -107,7 +107,7 @@ in `ide/vs2019/libmprompt.sln` to build and test.
 
 Some known issues are:
 
-- `gdb`, `lldb`: when debugging (with _gpools_ enabled) on Linux you will see 
+- `gdb`, `lldb`: when debugging (with _gpools_ enabled) on Linux you may see 
   segmentation fault errors (`SEGV`) which happen when demand paging stack memory; 
   you need to continue through those or set the debugger to ignore them 
   (enter `handle SIGSEGV nostop` in `gdb`).
@@ -119,7 +119,6 @@ Some known issues are:
   Backtraces in Visual Studio (and `windbg`) work well but sometimes the debugger stops 
   a backtrace too soon when libmprompt is unable to put a gstack at a lower address than its parent.
 
-- Use `mp_backtrace` to capture backtraces in the program.
 
 
 ## Libmprompt
@@ -434,7 +433,12 @@ On Windows, a gstack is allocated as:
 The guard page at the end of the committed area will
 move down into the reserved area to commit further stack pages on-demand. 
 
-If enabling gpools ([`config.gpool_enable`](test/main.c#L28)), the layout of the stack is the same but there are two differences: (1) the stacks will grow more aggressive doubling the committed area every time (up to 1MiB) which can help performance, and (2), the stack memory is reused in the process which can be more efficient than allocating from the OS from scratch (which needs to re-zero pages for example).
+If enabling gpools ([`config.gpool_enable`](test/main.c#L28)), the layout 
+of the stack is the same but there are two differences: (1) the stacks will 
+grow more aggressive doubling the committed area every time (up to 1MiB) which 
+can help performance, and (2), the stack memory is reused in the process which 
+can be more efficient than allocating from the OS from scratch (which needs to 
+re-zero pages for example).
 
 #### Linux and macOS
 
