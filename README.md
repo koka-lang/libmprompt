@@ -76,11 +76,11 @@ Releases:
 [backtraces]: #backtraces
 [semantics]: #semantics
 
-## Building
+# Building
 
 Tested on Linux (amd64 and arm64), macOS (amd64), and Windows (amd64).
 
-### Linux and macOS
+## Linux and macOS
 
 We use `cmake` to build:
 
@@ -97,12 +97,12 @@ This will build the libraries `libmpromptx.a` and `libmpeffx.a`.
 Pass the option `cmake ../.. -DMP_USE_C=ON` to build the C versions of the libraries
 (but these do not handle- or propagate exceptions).
 
-### Windows
+## Windows
 
 We use Visual Studio 2019 to develop the library -- open the solution 
 in `ide/vs2019/libmprompt.sln` to build and test.
 
-### Issues
+## Issues
 
 Some known issues are:
 
@@ -119,10 +119,7 @@ Some known issues are:
   a backtrace too soon when libmprompt is unable to put a gstack at a lower address than its parent.
 
 
-
-## Libmprompt
-
-### C Interface
+# Libmprompt C Interface
 
 ```C
 // Types
@@ -154,7 +151,36 @@ mp_resume_t* mp_resume_dup(mp_resume_t* r);
 int mp_backtrace(void** backtrace, int len);
 ```
 
-### Semantics
+
+# Backtraces
+
+A nice property of muli-prompts is that there is always
+a single strand of execution, together with suspended prompts.
+In contrast to lower level abstractions, like fibers, there is no 
+arbitrary switching between stacks: one can only yield up to a
+parent prompt (capturing all gstacks up to that prompt) or 
+resume a suspended prompt chain (and restoring all gstacks in that context).
+As a consequence, the active chain of prompts always form a logical stack 
+and we can have natural propagation of exceptions with proper backtraces.
+
+Here is an example of a backtrace on Linux:
+
+<img src="doc/backtrace2.jpg" width=600px>
+
+Here a breakpoint was set in code that was resumed
+where the backtrace continues into the main stack. This is quite nice
+for debugging compared to callback based programming for example.
+
+Here is a backtrace in the Visual Studio debugger:
+
+<img src="doc/backtrace3.jpg" width=600px>
+
+(Unfortunately, on Windows, in rare cases a backtrace can still be cut short 
+when libmprompt is unable to place a gstack at a lower address as its parent.)
+
+
+
+# Semantics
 
 The semantics of delimited multi-prompt control 
 can be described precisely:
@@ -255,7 +281,7 @@ see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Lei
 ([pdf](https://www.microsoft.com/en-us/research/publication/generalized-evidence-passing-for-effect-handlers/)).
 
 
-### An implementation based on in-place growable stacks
+# An implementation based on in-place growable stacks
 
 Each prompt starts a growable gstack and executes from there.
 For example, we can have:
@@ -412,34 +438,7 @@ also how exceptions are propagated):  (rule `(RETURN)`)
 See [`mprompt.c`](src/mprompt/mprompt.c) for the implementation of this.
 
 
-## Backtraces
-
-A nice property of muli-prompts is that there is always
-a single strand of execution, together with suspended prompts.
-In contrast to lower level abstractions, like fibers, there is no 
-arbitrary switching between stacks: one can only yield up to a
-parent prompt (capturing all gstacks up to that prompt) or 
-resume a suspended prompt chain (and restoring all gstacks in that context).
-As a consequence, the active chain of prompts always form a logical stack 
-and we can have natural propagation of exceptions with proper backtraces.
-
-Here is an example of a backtrace on Linux:
-
-<img src="doc/backtrace2.jpg" width=600px>
-
-Here a breakpoint was set in code that was resumed
-where the backtrace continues into the main stack. This is quite nice
-for debugging compared to callback based programming for example.
-
-Here is a backtrace in the Visual Studio debugger:
-
-<img src="doc/backtrace3.jpg" width=600px>
-
-(Unfortunately, on Windows, in rare cases a backtrace can still be cut short 
-when libmprompt is unable to place a gstack at a lower address as its parent.)
-
-
-## The libmpeff Interface
+# The libmpeff Interface
 
 A small library on top of `libmprompt` that implements
 algebraic effect handlers. Effect handlers give more structure
