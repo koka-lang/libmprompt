@@ -148,7 +148,7 @@ void  mp_resume_drop(mp_resume_t* resume);
 
 ```C
 // Multi-shot resumptions; use with care in combination with linear resources.
-void* mp_myield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
+void*        mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg);
 mp_resume_t* mp_resume_dup(mp_resume_t* r);
 ```
 
