@@ -114,11 +114,10 @@ Some known issues are:
   you need to continue through those or set the debugger to ignore them 
   (enter `handle SIGSEGV nostop` in `gdb`).
   
-- `lldb`: debugging on macOS has no such issue, but in debug mode we use an extra thread
+- `lldb`: when debugging on macOS we use an extra thread
   to handle Mach exceptions (to avoid a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868) in `lldb`).
   
-- On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably. 
-  Backtraces in Visual Studio (and `windbg`) work well but sometimes the debugger stops 
+- Debug stack traces in Visual Studio (and `windbg`) work well most of the time, but sometimes the debugger stops 
   a backtrace too soon when libmprompt is unable to put a gstack at a lower address than its parent.
 
 
