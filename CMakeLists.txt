@@ -12,7 +12,7 @@ set(mp_version "0.4")
 
 # all sources are included in one file so we can generate independent libraries and stand-alone object files.
 set(mprompt_sources  src/mprompt/main.c)
-    # util.c gstack-pool.c gstack-win/mmap.c gstack.c mprompt.c
+    # util.c gstack_pool.c gstack_win.c gstack_mmap.c gstack_mmap_mach.c gstack.c mprompt.c
 
 set(mpeff_sources    src/mpeff/main.c)
     # src/mpeff/mpeff.c
