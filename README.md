@@ -64,11 +64,12 @@ Particular aspects:n
 Enjoy,
   Daan Leijen and KC Sivaramakrishnan.
 
+Releases:
+- 2021-04-04: `v0.4`: initial support for Linux arm64.
+- 2021-04-03: `v0.3`: better backtraces on Windows, support libunwind.
+- 2021-04-01: `v0.2`: improved debugging on macOS with `lldb`.
+- 2021-03-30: `v0.1`: initial release.
 
-Todos:
-- Proper backtrace support in debuggers
-- Test on arm64.
-- ...
 
 [split]: https://gcc.gnu.org/wiki/SplitStacks
 [libhandler]: https://github.com/koka-lang/libhandler
