@@ -14,14 +14,17 @@ as smaller systems do not have enough virtual address space.
 
 There are two libraries provided:
 
-- `libmprompt`: the primitive library that provides 
-  multi-prompt control. This has well-defined semantics and is the
+- `libmprompt`: the primitive library that provides multi-prompt delimited control. 
+  The multi-prompt abstraction has well-defined semantics and is the
   minimal control abstraction that can be typed with simple types.
+  As such, we view the `libmprompt` library as a good API that should be provided
+  by the OS or language runtime to provide generic and sound delimited control.
   `libmpromptx` is the C++ compiled variant that integrates exception handling
   where exceptions are propagated correctly through the gstacks.
-
+  
 - `libmpeff`: a small example library that uses `libmprompt` to implement
-  efficient algebraic effect handlers in C (with a similar interface as [libhandler]).
+  efficient algebraic effect handlers (with a similar interface as [libhandler]).
+  This is an easier abstraction to program with using multi-prompts directly.
 
 Particular aspects:
 
@@ -253,8 +256,8 @@ evaluation context), is an error (e.g. like an unhandled exception).
 (Effect type systems, like in [Koka], can prevent this situation
 statically at compile-time but in our library this is a runtime error).
 
-These primitives are very expressive but can still be strongly
-typed in simply typed lambda calculus and are sound and
+These primitives are very expressive but can still be
+typed in in simply typed lambda calculus, and are sound and
 composable:
 ```haskell
 prompt :: (Marker a -> a) -> a               
@@ -267,7 +270,7 @@ When yielding to a marker of type `a`, the yielded function has type `(b -> a) -
 and must return results of type `a` (corresponding to the marker context).
 Meanwhile, the passed in resumption function `(b -> a)` expects an argument
 of type `b` to resume back to the yield point. Such simple types cannot be 
-given for example to any of `shift`/`reset`, `call/cc`, fibers, or |co-routines, 
+given for example to any of `shift`/`reset`, `call/cc`, fibers, or co-routines, 
 which is one aspect why we believe multi-prompt delimited control is preferable.
 
 The growable gstacks are used to make capturing- and resuming
@@ -442,7 +445,24 @@ See [`mprompt.c`](src/mprompt/mprompt.c) for the implementation of this.
 
 A small library on top of `libmprompt` that implements
 algebraic effect handlers. Effect handlers give more structure
-than basic multi-prompts and are easier to use.
+than basic multi-prompts and are a better abstraction for
+programming. In particular, 
+
+- You do not need the particular prompt marker, but always
+  yield to the innermost handler for a particular effect. This 
+  is much more convenient and is essential for example model
+  dynamically bound state (much like implicit parameters).
+
+- All potential operations are bound statically at the handler
+  and you always yield to a particular operation providing arguments
+  (where the handler definition is basically a v-table with a slot for every operation).
+  This makes it easier to reason about than using a multi-prompt
+  yield which can yield with any arbitrary function.
+
+- As effect handlers are linked on the stack, this abstraction
+  can be used across libraries/languages and is thus more
+  composable than using multi-prompts directly.
+
 See [`effects.c`](test/effects.c) for many examples of common 
 effect patterns.
 
