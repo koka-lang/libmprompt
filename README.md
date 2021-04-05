@@ -451,8 +451,8 @@ using resumptions as first-class values stored in the `workers` array:
 #include <stdint.h>
 #include <mprompt.h>
 
-#define N 10000       // max active async workers
-#define M 10000000    // total number of requests
+#define N 1000       // max active async workers
+#define M 1000000    // total number of requests
 
 static void* await_result(mp_resume_t* r, void* arg) {
   return r;  // instead of resuming ourselves, we return the resumption as a "suspended async computation" (A)
