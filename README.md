@@ -79,6 +79,8 @@ Todos:
 
 ## Building
 
+Tested on Linux (amd64 and arm64), macOS (amd64), and Windows (amd64).
+
 ### Linux and macOS
 
 We use `cmake` to build:
@@ -105,16 +107,19 @@ in `ide/vs2019/libmprompt.sln` to build and test.
 
 Some known issues are:
 
-- `gdb`, `lldb`: when using _gpools_ on Linux you will see segmentation fault errors (`SEGV`)
-  which happen when demand paging stack memory; you need to continue through those
-  or set the debugger to ignore them (enter `handle SIGSEGV nostop` in `gdb`).
+- `gdb`, `lldb`: when debugging (with _gpools_ enabled) on Linux you will see 
+  segmentation fault errors (`SEGV`) which happen when demand paging stack memory; 
+  you need to continue through those or set the debugger to ignore them 
+  (enter `handle SIGSEGV nostop` in `gdb`).
   
-- `lldb` on macOS has no such issue, but in debug mode we use an extra thread
-  to handle Mach exceptions (to avoid this long standing `lldb` [bug](https://bugs.llvm.org//show_bug.cgi?id=22868)).
+- `lldb`: debugging on macOS has no such issue, but in debug mode we use an extra thread
+  to handle Mach exceptions (to avoid a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868) in `lldb`).
   
 - On Windows with MSVC you need to compile with `-EHa` to unwind exceptions reliably. 
-  Backtraces in Visual Studio work well but sometimes the debugger stops a backtrace too soon
-  when libmprompt is unable to put a gstack at a lower address than its parent.
+  Backtraces in Visual Studio (and `windbg`) work well but sometimes the debugger stops 
+  a backtrace too soon when libmprompt is unable to put a gstack at a lower address than its parent.
+
+- Use `mp_backtrace` to capture backtraces in the program.
 
 
 ## Libmprompt
