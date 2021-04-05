@@ -58,7 +58,7 @@ jmpbuf layout:
 
 .global mp_setjmp
 .global mp_longjmp
-.global mp_switch_to_stack
+.global mp_stack_enter
 
 .type mp_setjmp,%function
 .type mp_longjmp,%function
@@ -131,7 +131,7 @@ mp_stack_enter:
   
   mov     x0, x5                /* argument to x0 */
   mov     x1, #0                /* no trap frame */
-  bl      x4                    /* and call the function */
+  blr     x4                    /* and call the function */
 
   /* should never get here */
   bl      abort
