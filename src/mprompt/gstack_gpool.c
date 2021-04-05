@@ -33,7 +33,7 @@
 
   note: when the stack grows down, we modiy the index to allocate gstacks in 
   reverse; i.e. the entry at index `i` represents an available gstack at `N - (free[i] + i)`.
-  On Windows backtraces only work if the parent of a gstack is at a higher
+  On Windows, backtraces only work if the parent of a gstack is at a higher
   address and this strategy will help to ensure this is often the case.
 
   Since the gpool list is global we use a small spinlock for thread-safe
