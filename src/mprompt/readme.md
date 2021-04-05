@@ -21,7 +21,34 @@
    - `asm/longjmp_arm64.S`: the Aarch64 ABI (ARM64).
 
 
-# Low-level layout of gstacks
+# Gpools
+
+On systems without overcommit (like macOS, or Linux with overcommit disabled)
+or on Windows using exponential commit for pages on the stack,
+we need to use our own page fault handler to commit stack pages on-demand.
+To detect reliably whether a page fault occurred in one of our stacks and 
+also to limit expansion of stacks beyond their maximum size, we reserve
+large virtual memory areas, called a `gpool`, where the  `gstack`s are located.
+
+These are linked with each gpool using by default about 256 GiB virtual
+adress space (containing about 32000 8MiB virtual gstacks).
+This allows the page fault handler to quickly determine if a fault is in
+one our stacks. In between each stack is a _noaccess_ gap (for buffer overflow mitigation) 
+and the first stack is used for the gpool info:
+
+```ioke
+|--------------------------------------------------------------------  --------------------|
+| mp_gpool_t .... |xxxx| stack 1  .... |xxxx| stack 2 .... |xxx| ...     | stack N ... |xxx|
+|--------------------------------------------------------------------  --------------------|
+  ^                 ^
+  meta-data        gap  
+```
+
+Another advantage is that the stack memory can be grown by doubling (up to 1MiB)
+which can have a performance advantage.
+
+
+# Low-level Layout of Gstacks
 
 ## Windows
 
