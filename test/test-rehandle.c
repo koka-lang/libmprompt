@@ -52,8 +52,12 @@ static void print_backtrace(const char* msg) {
 #elif USE_LIB_UNWIND 
 // if not on macOS: 
 // edit the cmake to link the mptest target with libunwind:
-//   target_link_libraries(mpeff PUBLIC pthread)  ==> target_link_libraries(mpeff PUBLIC pthread unwind)
-// install as: 
+//   target_link_libraries(mptest PRIVATE mpeff )  
+//    ==> target_link_libraries(mptest PUBLIC mpeff unwind)
+// on ARM64 you also need to link gcc_s _before_ libunwind:
+//    ==> target_link_libraries(mptest PRIVATE mpeff gcc_s unwind)
+// or otherwise exceptions are not caught!
+// install libunwind as: 
 //   $ sudo apt-get install libunwind-dev
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>

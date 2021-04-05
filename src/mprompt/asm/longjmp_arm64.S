@@ -139,11 +139,17 @@ mp_stack_enter:
   .cfi_startproc 
   .cfi_signal_frame             /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
   
-  sub     sp, sp, #16
-  .cfi_adjust_cfa_offset 16
-  .cfi_remember_state 
-  str     x3, [sp, #8]          /* save x3 to [sp+8] for unwinding */
+  stp     fp, lr, [sp, #16]!    /* link frame (seems needed for libunwind) */
+  .cfi_adjust_cfa_offset 32
+  .cfi_rel_offset lr, 24
+  .cfi_rel_offset fp, 16
 
+  mov     fp, sp
+  sub     sp, sp, #16
+  str     x3, [sp, #8]          /* save x3 to [sp+8] for unwinding */
+  .cfi_remember_state 
+  
+  
   /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 
      the previous registers can now be restored (during unwind) using .cfi_offset directives */
   .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_sp), 8, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = [[sp,#8]] */  
@@ -160,7 +166,7 @@ mp_stack_enter:
   .cfi_offset x25, 56
   .cfi_offset x26, 64
   .cfi_offset x27, 72
-  .cfi_offset x28, 80
+  .cfi_offset x28, 80  
 
   and     sp, x0, #~31          /* switch to the new stack (aligned down to 32 bytes) */
   sub     sp, sp, #32           /* sp = sp - 32 */
@@ -169,7 +175,7 @@ mp_stack_enter:
   add     x29, sp, #16          /* set our frame pointer to sp[16] */
   
   mov     x0, x5                /* argument to x0 */
-  mov     x1, #0                /* no trap frame */
+  mov     x1, fp                /* pass unwind frame */
   blr     x4                    /* and call the function */
 
   /* should never get here */
