@@ -53,7 +53,7 @@ Other advantanges of using gpools include
 
 By default, gpools are only used when overcommit is not available; this means
 that by default a gpool is not used on desktop Linux or Windows. You can configure
-this though using `mp_prompt_init(config)` where:
+this though using [`mp_init(config)`](../../include/mprompt.h) where:
 - [`config.gpool_enable`](../../test/main.c#L28) can be set to `true` to always enable gpools.
 - `config.gpool_max_size` can be set to the initial virtual size of a gpool (256 GiB by default).
 
