@@ -461,12 +461,14 @@ static void* await_result(mp_resume_t* r, void* arg) {
 static void* async_worker(mp_prompt_t* parent, void* arg) {
   // start a fresh worker
   // ... do some work
+  intptr_t partial_result = 0;
   // and await some request; we do this by yielding up to our prompt and running `await_result` (in the parent context!)
   mp_yield( parent, &await_result, NULL );
   // when we are resumed at some point, we do some more work 
   // ... do more work
-  // and return with a result (B)
-  return (void*)(1);
+  partial_result++;
+  // and return with the result (B)
+  return (void*)(partial_result);
 }
 
 static void async_workers(void) {
