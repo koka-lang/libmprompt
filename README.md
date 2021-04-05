@@ -155,7 +155,7 @@ int mp_backtrace(void** backtrace, int len);
 ```
 
 
-# Backtraces
+## Backtraces
 
 A nice property of muli-prompts is that there is always
 a single strand of execution, together with suspended prompts.
@@ -183,7 +183,7 @@ when libmprompt is unable to place a gstack at a lower address as its parent.)
 
 
 
-# Semantics
+## Semantics
 
 The semantics of delimited multi-prompt control 
 can be described precisely:
@@ -284,7 +284,7 @@ see "_Evidence Passing Semantics for Effect Handler_", Ningning Xie and Daan Lei
 ([pdf](https://www.microsoft.com/en-us/research/publication/generalized-evidence-passing-for-effect-handlers/)).
 
 
-# An implementation based on in-place growable stacks
+## An implementation based on in-place growable stacks
 
 Each prompt starts a growable gstack and executes from there.
 For example, we can have:
@@ -440,7 +440,6 @@ also how exceptions are propagated):  (rule `(RETURN)`)
 
 See [`mprompt.c`](src/mprompt/mprompt.c) for the implementation of this.
 
-
 ## An Example
 
 Here is a minimal example of running `N` "async" workers over `M` requests
@@ -495,6 +494,7 @@ int main(int argc, char** argv) {
   return 0;
 }
 ```
+
 
 
 # The libmpeff Interface
