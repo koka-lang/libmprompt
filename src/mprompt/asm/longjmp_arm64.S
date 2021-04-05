@@ -113,7 +113,6 @@ mp_longjmp:
   ret                         /* jump to lr */
 
 
-
 /* switch stack 
    x0: stack pointer, 
    x1: stack commit limit    (ignored on unix)
@@ -122,7 +121,34 @@ mp_longjmp:
    x4: function to run
    x5: argument to pass to the function 
 */
+/* DWARF unwind info instructions: <http://dwarfstd.org/doc/DWARF5.pdf> 
+   Register mapping: <file:///C:/Users/daan/AppData/Local/Temp/IHI0057B_aadwarf64.pdf>
+*/
+#define DW_def_cfa_expression     0x0F  
+#define DW_expression             0x10      
+#define DW_val_expression         0x16        
+#define DW_OP_deref               0x06        /* dereference the top of the expression stack */
+#define DW_OP_breg(r)             (0x70+r)    /* push `register + ofs` on the expression stack */
+#define DW_REG_fp                 29
+#define DW_REG_lr                 30
+#define DW_REG_sp                 31
+
 mp_stack_enter:
+  .cfi_startproc 
+  .cfi_signal_frame             /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
+  
+  sub     sp, sp, #16
+  .cfi_adjust_cfa_offset 16
+  .cfi_remember_state
+  str     x3, [sp, #8]
+
+  /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 
+     the previous registers can now be restored (during unwind) using .cfi_offset directives */
+  .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_sp), 8, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = [[sp,#8]] */  
+  .cfi_offset x30, 96           /* lr */
+  .cfi_offset sp, 104           /* sp */
+  .cfi_offset x29, 88           /* fp */
+
   and     sp, x0, #~31          /* switch to the new stack (aligned down to 32 bytes) */
   sub     sp, sp, #32           /* sp = sp - 32 */
   stp     x29, x30, [sp, #16]   /* mimic call on new stack: sp[24] = x30, sp[16] = lr */
@@ -136,6 +162,9 @@ mp_stack_enter:
   /* should never get here */
   bl      abort
 
+  .cfi_restore_state
   ldr     x0, [sp, #8]          /* load jmpbuf_t* and longjmp back */
   ldr     x0, [x0]
   b       mp_longjmp
+
+  .cfi_endproc
