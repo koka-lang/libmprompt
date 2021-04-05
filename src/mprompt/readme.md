@@ -30,22 +30,32 @@ To detect reliably whether a page fault occurred in one of our stacks and
 also to limit expansion of stacks beyond their maximum size, we reserve
 large virtual memory areas, called a `gpool`, where the  `gstack`s are located.
 
-These are linked with each gpool using by default about 256 GiB virtual
+The gpools are linked together with each gpool using by default about 256 GiB virtual
 adress space (containing about 32000 8MiB virtual gstacks).
 This allows the page fault handler to quickly determine if a fault is in
 one our stacks. In between each stack is a _noaccess_ gap (for buffer overflow mitigation) 
 and the first stack is used for the gpool info:
 
 ```ioke
-|--------------------------------------------------------------------  --------------------|
-| mp_gpool_t .... |xxxx| stack 1  .... |xxxx| stack 2 .... |xxx| ...     | stack N ... |xxx|
-|--------------------------------------------------------------------  --------------------|
+|--------------------------------------------------------------------  ---------------------|
+| mp_gpool_t .... |xxx| gstack 1  .... |xxx| gstack 2 .... |xxx| ...     | gstack N ... |xxx|
+|--------------------------------------------------------------------  ---------------------|
   ^                 ^
   meta-data        gap  
 ```
 
-Another advantage is that the stack memory can be grown by doubling (up to 1MiB)
-which can have a performance advantage.
+Other advantanges of using gpools include 
+- The stack memory can be grown by doubling (up to 1MiB)
+   which can have a performance advantage. 
+- Since the memory stays in-process, reusing
+   gstacks can be more efficient than going through the OS to unmap/remap memory as
+   that needs to be re-zero'd at allocation time.
+
+By default, gpools are only used when overcommit is not available; this means
+that by default a gpool is not used on desktop Linux or Windows. You can configure
+this though using `mp_prompt_init(config)` where:
+- [`config.gpool_enable`](test/main.c#L28) can be set to `true` to always enable gpools.
+- `config.gpool_max_size` can be set to the initial virtual size of a gpool (256 GiB by default).
 
 
 # Low-level Layout of Gstacks
@@ -73,13 +83,8 @@ On Windows, a gstack is allocated as:
 ```
 The guard page at the end of the committed area will
 move down into the reserved area to commit further stack pages on-demand. 
-
 If enabling gpools ([`config.gpool_enable`](test/main.c#L28)), the layout 
-of the stack is the same but there are two differences: (1) the stacks will 
-grow more aggressive doubling the committed area every time (up to 1MiB) which 
-can help performance, and (2), the stack memory is reused in the process which 
-can be more efficient than allocating from the OS from scratch (which needs to 
-re-zero pages for example).
+of the stack is the same and still uses  guard pages.
 
 ## Linux and macOS
 
