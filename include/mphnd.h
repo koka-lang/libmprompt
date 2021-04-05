@@ -66,7 +66,7 @@ mp_decl_export void*          mph_mask(mph_kind_t mask, size_t from, void* (*fun
 
 
 // Multi-shot
-mp_decl_export void*          mph_myield_to(mph_handler_t* handler, mph_yield_fun_t* fun, void* arg);
+mp_decl_export void*          mph_yieldm_to(mph_handler_t* handler, mph_yield_fun_t* fun, void* arg);
 mp_decl_export mph_resume_t*  mph_resume_dup(mph_resume_t* r);              // only myield resumptions can be dup'd
 
 

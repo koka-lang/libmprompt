@@ -346,7 +346,7 @@ void* mph_yield_to(mph_handler_t* h, mph_yield_fun_t fun, void* arg) {
 }
 
 // Multi-shot Yield to a prompt without unwinding
-void* mph_myield_to(mph_handler_t* h, mph_yield_fun_t fun, void* arg) {
+void* mph_yieldm_to(mph_handler_t* h, mph_yield_fun_t fun, void* arg) {
   return mph_yield_to_internal(false, h, fun, arg);
 }
 

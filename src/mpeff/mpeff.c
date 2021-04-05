@@ -183,7 +183,7 @@ static void* mpe_perform_op_multi(mph_resume_t* r, void* local, void* envarg) {
 
 static void* mpe_perform_yield_to_multi(mph_handler_t* mph, const mpe_operation_t* op, void* arg) {
   mpe_perform_env_t env = { op->opfun, arg };
-  return mph_myield_to(mph, &mpe_perform_op_multi, &env);
+  return mph_yieldm_to(mph, &mpe_perform_op_multi, &env);
 }
 
 
