@@ -132,6 +132,8 @@ mp_longjmp:
 #define DW_REG_fp                 29
 #define DW_REG_lr                 30
 #define DW_REG_sp                 31
+#define DW_REG_ELR_mode           33
+#define DW_REG_v0                 64
 
 mp_stack_enter:
   .cfi_startproc 
@@ -139,20 +141,31 @@ mp_stack_enter:
   
   sub     sp, sp, #16
   .cfi_adjust_cfa_offset 16
-  .cfi_remember_state
-  str     x3, [sp, #8]
+  .cfi_remember_state 
+  str     x3, [sp, #8]          /* save x3 to [sp+8] for unwinding */
 
   /* set the cfa to point to our return jmpbuf_t (instead of into the stack); 
      the previous registers can now be restored (during unwind) using .cfi_offset directives */
   .cfi_escape DW_def_cfa_expression, 4, DW_OP_breg(DW_REG_sp), 8, DW_OP_deref, DW_OP_deref /* jmpbuf_t* cfa = [[sp,#8]] */  
-  .cfi_offset x30, 96           /* lr */
   .cfi_offset sp, 104           /* sp */
+  .cfi_offset x30, 96           /* lr */
   .cfi_offset x29, 88           /* fp */
+  .cfi_offset x18,  0
+  .cfi_offset x19,  8
+  .cfi_offset x20, 16
+  .cfi_offset x21, 24
+  .cfi_offset x22, 32
+  .cfi_offset x23, 40
+  .cfi_offset x24, 48
+  .cfi_offset x25, 56
+  .cfi_offset x26, 64
+  .cfi_offset x27, 72
+  .cfi_offset x28, 80
 
   and     sp, x0, #~31          /* switch to the new stack (aligned down to 32 bytes) */
   sub     sp, sp, #32           /* sp = sp - 32 */
   stp     x29, x30, [sp, #16]   /* mimic call on new stack: sp[24] = x30, sp[16] = lr */
-  str     x3, [sp, #8]          /* save jmpbuf_t** on the stack for (future) unwinding: sp[8] = x3 */
+  str     x3, [sp, #8]          /* save jmpbuf_t** on the stack for (future) unwinding: x3 == [sp+8]  */
   add     x29, sp, #16          /* set our frame pointer to sp[16] */
   
   mov     x0, x5                /* argument to x0 */
