@@ -182,18 +182,18 @@ static inline void mp_atomic_yield(void) {
 // ---------------------------------------------------------------
 typedef _Atomic(intptr_t) mp_spin_lock_t;
 
-#define mp_spin_lock_create()  (0)
+#define mp_spin_lock_create()  ((intptr_t)0)
 
 static inline void mp_spin_lock_acquire(mp_spin_lock_t* l) {
   intptr_t expected = 0;
-  while (!mp_atomic_cas(l, &expected, 1)) { 
+  while (!mp_atomic_cas(l, &expected, (intptr_t)1)) { 
     expected = 0;
     mp_atomic_yield(); 
   }
 }
 
 static inline void mp_spin_lock_release(mp_spin_lock_t* l) {
-  mp_atomic_store(l, 0);
+  mp_atomic_store(l, (intptr_t)0);
 }
 
 #define mp_spin_lock(l)  \
