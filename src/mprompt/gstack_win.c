@@ -146,7 +146,10 @@ static void mp_gstack_os_free(uint8_t* full) {
 
 // Reset the memory in a gstack
 static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
-  ssize_t reset_size = stk_size - os_gstack_initial_commit;
+  ULONG guaranteed = 0;
+  SetThreadStackGuarantee(&guaranteed);
+  ssize_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
+  ssize_t reset_size = stk_size - os_gstack_initial_commit - guard_size;
   if (reset_size <= 0) return true;
   if (!os_gstack_reset_decommits) {
     // reset memory pages up to the initial commit
@@ -155,7 +158,8 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     //       these pages no longer need to be zero'd, nor do we need to set the guard page again,
     //       and thus this can be more efficient.
     // todo: is the current call ok since it includes a mix of committed and decommitted pages?
-    //       we should perhaps only reset the committed range.
+    //       we should perhaps only reset the committed range? (seems ok)
+    //       what if this resets a guard page? (also seems ok)
     if (VirtualAlloc(stk, reset_size, MEM_RESET, PAGE_NOACCESS /* ignored */) == NULL) {
       mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", stk, reset_size);
       return false;
