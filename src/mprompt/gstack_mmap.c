@@ -274,8 +274,8 @@ static bool mp_gstack_os_init(void) {
   // set process cleanup of the gpools
   atexit(&mp_gpools_process_done);
 
-  mp_gpools_process_init();
-  mp_os_mach_process_init();  // macOS
+  mp_os_mach_process_init();  // macOS; note: must come before gpools_process_init as it may enable gpools.
+  mp_gpools_process_init();  
   return true;
 }
 

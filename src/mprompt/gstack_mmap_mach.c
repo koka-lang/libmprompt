@@ -166,7 +166,10 @@ static void mp_os_mach_process_init(void) {
   // Only set up a mach exception handler if we are running under a debugger
   // Design note: in principle we could always enable this and not use a signal handler at all.
   //              the only drawback would be the creation of an extra thread.
-  if (!mp_os_mach_in_debugger() || !os_use_gpools) return;
+  if (!mp_os_mach_in_debugger()) return;
+  os_use_gpools = true;  // we must use gpools in this situation or otherwise we cannot
+                         // determine access in the commit_on_demand handler (as the handler
+                         // runs now in a separate thread)
 
   // Create a single exception handler thread to handles EXC_BAD_ACCESS (before the debugger gets it)
   mach_port_t port = mach_task_self();
