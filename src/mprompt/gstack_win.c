@@ -331,10 +331,8 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   
   // extra check that the address is within an `os_gstack_size` range of the current stack
   ssize_t commit_available;
-  ssize_t tib_stack_size;   // only valid for the main stack as for gstacks we may have set it low to trigger our signal handler
-  ssize_t tib_available;
   uint8_t* base;
-  uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, &tib_available, &tib_stack_size, &base);
+  uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, NULL, NULL, &base);
   if (page < (base - os_gstack_size) || page >= base) {     
     return EXCEPTION_CONTINUE_SEARCH;
   }
@@ -347,14 +345,8 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   // determine precisely if the address is in an accessible part of a gstack
   ssize_t available = 0;
   ssize_t stack_size = 0;
-  mp_access_t res = MP_NOACCESS;
-  if (exncode == MP_CPP_EXN && base == mp_win_main_stack_base) {
-    // the main stack needs to grow to give enough exception guarantee
-    stack_size = tib_stack_size;
-    available = tib_available;
-    res = MP_ACCESS;
-  }
-  else if (os_use_gpools) {
+  mp_access_t res = MP_NOACCESS;  
+  if (os_use_gpools) {
     // with a gpool we can reliably detect if there is available space in one of our gstack's
     res = mp_gpools_check_access(page, &available, &stack_size, NULL);
   }
