@@ -140,7 +140,10 @@ static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     mp_os_mem_free(full, os_gstack_size);
   }
   else {
-    mp_gstack_os_reset(full, stk, stk_size, true);
+    #pragma warning(suppress:6250) // warning: MEM_DECOMMIT does not free the memory
+    if (VirtualFree(stk, stk_size, MEM_DECOMMIT) == NULL) {  // we cannot use MEM_RESET as that puts the guard pages into an invalid state
+      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, stk_size);
+    };
     mp_gpool_free(full);
   }
 }

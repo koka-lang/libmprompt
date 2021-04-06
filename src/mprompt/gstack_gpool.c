@@ -237,7 +237,7 @@ static void mp_gpool_free(uint8_t* stk) {
         sp = gp->free_sp;
         //idx = gp->block_count - block_idx - sp;
         idx = idx - sp;        
-        gp->free[sp] = (uint16_t)idx;
+        gp->free[sp] = (int16_t)idx;
       }
       mp_assert(idx >= INT16_MIN && idx <= INT16_MAX);
       mp_assert(sp > 0);
