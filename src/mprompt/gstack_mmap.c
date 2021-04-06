@@ -154,20 +154,21 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
 }
 
 // Free the memory of a gstack
-static void mp_gstack_os_free(uint8_t* full) {
+static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
   if (!os_use_gpools) {
     mp_os_mem_free(full,os_gstack_size);
   }
   else {
+    mp_gstack_os_reset(full, stk, stk_size, true);
     mp_gpool_free(full);
   }
 }
 
 // Reset the memory of a gstack
-static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
+static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size, bool reset_all) {
   MP_UNUSED(full);
   // reset memory pages up to the initial commit
-  ssize_t  reset_size = stk_size - os_gstack_initial_commit;
+  ssize_t  reset_size = stk_size - (reset_all ? 0 : os_gstack_initial_commit);
   if (!os_gstack_reset_decommits) {
     // todo: use mmap(PROT_NONE) and back to PROT_READ|PROT_WRITE to force decommit?
     #if defined(MADV_FREE_REUSABLE)
@@ -203,7 +204,9 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     if (err != 0) {
       mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, reset_size);      
     }
-    mp_mmap_initial_commit(stk, stk_size, false);
+    if (!reset_all) {
+      mp_mmap_initial_commit(stk, stk_size, false);
+    }
     return (err == 0);
   }
 }

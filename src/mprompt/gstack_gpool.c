@@ -156,7 +156,7 @@ static mp_gpool_t* mp_gpool_create(void* p, ssize_t size, ssize_t stack_size, ss
 }
 
 // Allocate a fresh growable stack area from the pools
-static uint8_t* mp_gpool_allocx(uint8_t** stk, ssize_t* stk_size) {
+static uint8_t* mp_gpool_alloc_stack(uint8_t** stk, ssize_t* stk_size) {
   // for all pools
   for (mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {
     ssize_t block_idx = 0;
@@ -170,13 +170,13 @@ static uint8_t* mp_gpool_allocx(uint8_t** stk, ssize_t* stk_size) {
         gp->free_sp = sp + 1;
         block_idx = gp->free[sp] + sp;
       }
-    }
-    if (mp_gpool_grows_down()) {
-      block_idx = gp->block_count - block_idx; // grow from top
-    }
+    }    
     mp_assert_internal(block_idx >= 0 && block_idx < gp->block_count);
     if (block_idx > 0) {
-      if (block_idx >= gp->block_count) return NULL; // paranoia
+      if (mp_gpool_grows_down()) {
+        block_idx = gp->block_count - block_idx; // grow from top
+      }
+      if (block_idx <= 0 || block_idx >= gp->block_count) return NULL; // paranoia
       uint8_t* p = ((uint8_t*)gp + (block_idx * gp->block_size));
       //mp_trace_message("gpool_alloc: gp: %p, p: %p, block_idx: %zd, sp: %zd\n", gp, p, block_idx, sp);
       *stk = p;
@@ -189,7 +189,7 @@ static uint8_t* mp_gpool_allocx(uint8_t** stk, ssize_t* stk_size) {
 
 // Allocate a fresh growable stack area from the pools
 static uint8_t* mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size) {
-  uint8_t* p = mp_gpool_allocx(stk, stk_size);
+  uint8_t* p = mp_gpool_alloc_stack(stk, stk_size);
   if (p != NULL) return p;
 
   // allocate a fresh gpool
@@ -209,12 +209,12 @@ static uint8_t* mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size) {
   mp_gpool_create(pool, poolsize, os_gstack_size - os_gstack_gap, os_gstack_gap, true);
 
   // and try to allocate again 
-  return mp_gpool_allocx(stk, stk_size);
+  return mp_gpool_alloc_stack(stk, stk_size);
 }
 
 
 // Free a growable stack area back to the pools
-static void mp_gpool_free(uint8_t* stk) {
+static void mp_gpool_free(uint8_t* stk) {  
   // for all pools
   for (mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {
     ptrdiff_t ofs = (uint8_t*)stk - (uint8_t*)gp;

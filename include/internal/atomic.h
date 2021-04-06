@@ -180,17 +180,20 @@ static inline void mp_atomic_yield(void) {
 // ---------------------------------------------------------------
 // Spin lock for very small critical sections
 // ---------------------------------------------------------------
-typedef _Atomic(uintptr_t) mp_spin_lock_t;
+typedef _Atomic(intptr_t) mp_spin_lock_t;
 
-#define mp_spin_lock_create()  (0UL)
+#define mp_spin_lock_create()  (0)
 
 static inline void mp_spin_lock_acquire(mp_spin_lock_t* l) {
-  uintptr_t expected = 0UL;
-  while (!mp_atomic_cas(l, &expected, 1UL)) { mp_atomic_yield(); }
+  intptr_t expected = 0;
+  while (!mp_atomic_cas(l, &expected, 1)) { 
+    expected = 0;
+    mp_atomic_yield(); 
+  }
 }
 
 static inline void mp_spin_lock_release(mp_spin_lock_t* l) {
-  mp_atomic_store(l, 0UL);
+  mp_atomic_store(l, 0);
 }
 
 #define mp_spin_lock(l)  \

@@ -16,7 +16,7 @@
 // Interface
 // -----------------------------------------------------
 
-static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* available, uint8_t** base);
+static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* available, ssize_t* stack_size, uint8_t** base);
 static bool     mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_initial);
 static void     mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit);
 
@@ -134,22 +134,29 @@ static bool mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_in
 }
 
 // Free the memory of a gstack
-static void mp_gstack_os_free(uint8_t* full) {
+static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
   if (full == NULL) return;
   if (!os_use_gpools) {
     mp_os_mem_free(full, os_gstack_size);
   }
   else {
+    mp_gstack_os_reset(full, stk, stk_size, true);
     mp_gpool_free(full);
   }
 }
 
 // Reset the memory in a gstack
-static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
-  ULONG guaranteed = 0;
-  SetThreadStackGuarantee(&guaranteed);
-  ssize_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
-  ssize_t reset_size = stk_size - os_gstack_initial_commit - guard_size;
+static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size, bool reset_all) {
+  ssize_t reset_size;
+  if (reset_all) {
+    reset_size = stk_size;
+  }
+  else {
+    ULONG guaranteed = 0;
+    SetThreadStackGuarantee(&guaranteed);
+    ssize_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
+    reset_size = stk_size - os_gstack_initial_commit - guard_size;
+  }
   if (reset_size <= 0) return true;
   if (!os_gstack_reset_decommits) {
     // reset memory pages up to the initial commit
@@ -163,7 +170,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     if (VirtualAlloc(stk, reset_size, MEM_RESET, PAGE_NOACCESS /* ignored */) == NULL) {
       mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", stk, reset_size);
       return false;
-    }
+    }    
     return true;
   }
   else {
@@ -174,8 +181,13 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
       mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, reset_size);
       return false;
     }
-    // .. and reinitialize guard
-    return mp_win_initial_commit(stk, stk_size, false);
+    if (reset_all) {
+      return true;
+    }
+    else {
+      // .. and reinitialize guard
+      return mp_win_initial_commit(stk, stk_size, false);
+    }
   }
 }
 
@@ -213,7 +225,7 @@ static bool mp_gstack_os_init(void) {
   os_page_size = sys_info.dwPageSize;
 
   // remember the system stack
-  mp_win_get_stack_extent(NULL, NULL, &mp_win_main_stack_base);
+  mp_win_get_stack_extent(NULL, NULL, NULL, &mp_win_main_stack_base);
 
   // set up thread termination routine
   mp_win_fls_key = FlsAlloc(&mp_win_thread_done);
@@ -273,19 +285,20 @@ static mp_decl_noinline uint8_t* mp_win_current_sp(void) {
 }
 
 // Get the limits of the current stack of this thread
-static uint8_t* mp_win_tib_get_stack_extent(const MP_TIB* tib, ssize_t* commit_available, ssize_t* available, uint8_t** base) {
+static uint8_t* mp_win_tib_get_stack_extent(const MP_TIB* tib, ssize_t* commit_available, ssize_t* available, ssize_t* stack_size, uint8_t** base) {
   uint8_t* sp = mp_win_current_sp();
   mp_assert_internal(os_stack_grows_down);
   bool instack = (sp > tib->StackRealLimit && sp <= tib->StackBase);
   if (commit_available != NULL) *commit_available = (instack ? sp - tib->StackLimit : 0);
   if (available != NULL) *available = (instack ? sp - tib->StackRealLimit : 0);
+  if (stack_size != NULL) *stack_size = tib->StackBase - tib->StackRealLimit;
   if (base != NULL) *base = tib->StackBase;
   return (instack ? sp : NULL);
 }
 
-static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* available, uint8_t** base) {
+static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* available, ssize_t* stack_size, uint8_t** base) {
   MP_TIB* tib = mp_win_tib();
-  return mp_win_tib_get_stack_extent(tib, commit_available, available, base);
+  return mp_win_tib_get_stack_extent(tib, commit_available, available, stack_size, base);
 }
 
 
@@ -315,8 +328,10 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   
   // extra check that the address is within an `os_gstack_size` range of the current stack
   ssize_t commit_available;
+  ssize_t tib_stack_size;   // only valid for the main stack as for gstacks we may have set it low to trigger our signal handler
+  ssize_t tib_available;
   uint8_t* base;
-  uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, NULL, &base);
+  uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, &tib_available, &tib_stack_size, &base);
   if (page < (base - os_gstack_size) || page >= base) {     
     return EXCEPTION_CONTINUE_SEARCH;
   }
@@ -330,7 +345,13 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   ssize_t available = 0;
   ssize_t stack_size = 0;
   mp_access_t res = MP_NOACCESS;
-  if (os_use_gpools) {
+  if (exncode == MP_CPP_EXN && base == mp_win_main_stack_base) {
+    // the main stack needs to grow to give enough exception guarantee
+    stack_size = tib_stack_size;
+    available = tib_available;
+    res = MP_ACCESS;
+  }
+  else if (os_use_gpools) {
     // with a gpool we can reliably detect if there is available space in one of our gstack's
     res = mp_gpools_check_access(page, &available, &stack_size, NULL);
   }

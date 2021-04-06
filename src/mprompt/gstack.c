@@ -84,8 +84,8 @@ static uint8_t* mp_push(uint8_t* sp, ssize_t size, uint8_t** start) {
 // "gpools", commit-on-demand handlers etc.
 //----------------------------------------------------------------------------------
 static uint8_t* mp_gstack_os_alloc(uint8_t** stack, ssize_t* stack_size);
-static void     mp_gstack_os_free(uint8_t* full);
-static bool     mp_gstack_os_reset(uint8_t* full, uint8_t* stack, ssize_t stack_size);  // keep stack but mark memory as uncommitted to the OS
+static void     mp_gstack_os_free(uint8_t* full, uint8_t* stack, ssize_t stack_size);
+static bool     mp_gstack_os_reset(uint8_t* full, uint8_t* stack, ssize_t stack_size, bool reset_all);  // keep stack but mark memory as uncommitted to the OS
 static bool     mp_gstack_os_init(void);
 static void     mp_gstack_os_thread_init(void);
 
@@ -193,7 +193,9 @@ static mp_decl_thread mp_gstack_t* _mp_gstack_delayed_free;
 static void mp_gstack_clear_delayed(void) {
   if (_mp_gstack_delayed_free == NULL) return;
   #ifdef __cplusplus
-  if (std::uncaught_exception()) return; // don't clear while exceptions are active
+  if (std::uncaught_exception()) {
+    return; // don't clear while exceptions are active
+  }
   #endif
   mp_gstack_t* g = _mp_gstack_delayed_free;
   while (g != NULL) {
@@ -299,7 +301,7 @@ void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fu
     // can commit quadratically to improve performance.
     ULONG guaranteed = 0;
     SetThreadStackGuarantee(&guaranteed);
-    base_limit = base_commit_limit - os_page_size - mp_align_up(guaranteed, os_page_size);
+    base_limit = mp_push(base, g->initial_commit + os_page_size + mp_align_up(guaranteed, os_page_size), NULL);
   //}
 #endif
   mp_stack_enter(base_entry_sp, base_commit_limit, base_limit, return_jmp, fun, arg);  
@@ -326,8 +328,8 @@ void mp_gstack_free(mp_gstack_t* g, bool delay) {
     // Otherwise we decommit potentially committed memory of a deep stack to reduce memory pressure.
     g->initial_reserved = mp_gstack_initial_reserved();  // reset reserved area
     if (!mp_gstack_has_valid_canary(g)) {
-      // decommit
-      if (!mp_gstack_os_reset(g->full, g->stack, g->stack_size)) {
+      // reset
+      if (!mp_gstack_os_reset(g->full, g->stack, g->stack_size, false)) {
         goto mp_free;
       }
     }
@@ -339,7 +341,7 @@ void mp_gstack_free(mp_gstack_t* g, bool delay) {
 
 mp_free:
   // otherwise free it to the OS
-  mp_gstack_os_free(g->full);
+  mp_gstack_os_free(g->full, g->stack, g->stack_size);
 }
 
 
@@ -350,7 +352,7 @@ void mp_gstack_clear_cache(void) {
   while( g != NULL) {
     mp_gstack_t* next = _mp_gstack_cache = g->next;
     _mp_gstack_cache_count--;
-    mp_gstack_os_free(g->full);
+    mp_gstack_os_free(g->full, g->stack, g->stack_size);
     g = next;
   }
   mp_assert_internal(_mp_gstack_cache == NULL);

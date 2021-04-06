@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
   //config.stack_grow_fast = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
   //config.stack_initial_commit = 64 * 1024L; 
-  config.stack_cache_count = -1;
+  config.stack_cache_count = 1;
   mp_init(&config);
 
   size_t start_rss = 0;
@@ -41,23 +41,23 @@ int main(int argc, char** argv) {
   //counter_run();
   //countern_run();
   //mstate_run();
-  //rehandle_run();
+  rehandle_run();
 
   //// C++ 
-  //exn_run();
+  exn_run();
   //multi_unwind_run();
-  //throw_run();
-  //
-  //// multi-shot tests
-  //amb_run();
-  //amb_state_run();
-  //nqueens_run();
+  throw_run();
+  
+  // multi-shot tests
+  amb_run();
+  amb_state_run();
+  nqueens_run();
 
-  //// threaded test (C++ only)
-  //thread_rehandle_run();
+  // threaded test (C++ only)
+  thread_rehandle_run();
   
   // direct mprompt tests
-  mp_async_test1M();  // async workers
+  //mp_async_test1M();  // async workers
 
   // low-level mprompt tests
   //mp_test1()
@@ -135,7 +135,7 @@ static void mp_async_test1M(void) {
     size_t j = i % activeN;
     count += mpe_long_voidp(mp_resume(rs[j], mpe_voidp_long(stack_kb)));  // do the work
     rs[j] = (mp_resume_t*)mp_prompt(&async_workerx, NULL); // and create a new one
-    //if (i % 1000 == 0) printf("todo: %5zu ...\n", N - i);
+    if (j == 0) printf("todo: %5zu ...\n", totalN - i);
   }
   //mpt_show_process_info(stdout, start, start_rss);
   size_t total_kb = totalN * stack_kb;
