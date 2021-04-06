@@ -116,7 +116,7 @@ static void* mp_mach_exc_thread_start(void* arg) {
       if (req.code[0] == KERN_PROTECTION_FAILURE) {  // == EXC_BAD_ACCESS
         void* address = (void*)req.code[1];
         // And call our commit-on-demand handler to reliably provide access if the address is in one of our gstacks
-        if (mp_gpools_commit_on_demand(address)) {
+        if (mp_mmap_commit_on_demand(address)) {
           //mp_trace_message("  resolved bad acsess at %p\n", address);
           mp_mach_reply(&req, KERN_SUCCESS);  // resolved!
           continue;                           // wait for next request

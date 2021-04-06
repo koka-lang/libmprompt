@@ -26,37 +26,38 @@ int main(int argc, char** argv) {
   printf("main\n");
   
   mp_config_t config = { };
-  //config.gpool_enable = true;
+  config.gpool_enable = true;
+  //config.stack_grow_fast = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
-  //config.stack_initial_commit = 64 * 1024L;   // use when debugging with lldb on macOS
-  //config.stack_cache_count = -1;
+  //config.stack_initial_commit = 64 * 1024L; 
+  config.stack_cache_count = -1;
   mp_init(&config);
 
   size_t start_rss = 0;
   mpt_timer_t start = mpt_show_process_info_start(&start_rss);
 
   // effect handlers
-  reader_run();
-  counter_run();
-  countern_run();
-  mstate_run();
-  rehandle_run();
+  //reader_run();
+  //counter_run();
+  //countern_run();
+  //mstate_run();
+  //rehandle_run();
 
-  // C++ 
-  exn_run();
-  multi_unwind_run();
-  throw_run();
-  
-  // multi-shot tests
-  amb_run();
-  amb_state_run();
-  nqueens_run();
+  //// C++ 
+  //exn_run();
+  //multi_unwind_run();
+  //throw_run();
+  //
+  //// multi-shot tests
+  //amb_run();
+  //amb_state_run();
+  //nqueens_run();
 
-  // threaded test (C++ only)
-  thread_rehandle_run();
+  //// threaded test (C++ only)
+  //thread_rehandle_run();
   
   // direct mprompt tests
-  //mp_async_test1M();  // async workers
+  mp_async_test1M();  // async workers
 
   // low-level mprompt tests
   //mp_test1()
@@ -113,8 +114,12 @@ static void* async_workerx(mp_prompt_t* p, void* arg) {
  
 
 static void mp_async_test1M(void) {
-  const size_t totalN = 10 * (1000000 /* 1M */);
-  const size_t activeN = 10000;
+  size_t totalN = 10 * (1000000 /* 1M */);
+  size_t activeN = 10000;
+  #ifndef NDEBUG
+  totalN /= 10;
+  activeN /= 10;
+  #endif
   const long stack_kb = 32;
   printf("async_test1M set up...\n");
   mp_resume_t** rs = (mp_resume_t**)calloc(activeN, sizeof(mp_prompt_t*));

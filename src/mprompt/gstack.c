@@ -44,7 +44,8 @@ struct mp_gstack_s {
 
 // Static configuration; should be set once at startup.
 // Todo: make this easier to change by reading environment variables?
-static bool    os_use_gpools              = true;          // seems always faster
+static bool    os_use_gpools              = false;         // reuse gstacks in-process
+static bool    os_use_overcommit          = false;         // commit on demand by relying on overcommit? (only if available)
 static bool    os_stack_grows_down        = true;          // on almost all systems
 static ssize_t os_page_size               = 0;             // initialized at startup
 
@@ -52,7 +53,8 @@ static ssize_t os_gstack_initial_commit   = 0;             // initial commit siz
 static ssize_t os_gstack_size             = 8 * MP_MIB;    // reserved memory for a stack (including the gaps)
 static ssize_t os_gstack_gap              = 64 * MP_KIB;   // noaccess gap between stacks; `os_gstack_gap > min(64*1024, os_page_size, os_gstack_size/2`.
 static bool    os_gstack_reset_decommits  = false;         // force full decommit when resetting a stack?
-static ssize_t os_gstack_cache_count      = 4;             // number of prompts to keep in the thread local cache
+static bool    os_gstack_grow_fast        = false;         // use doubling to grow gstacks (up to 1MiB)
+static ssize_t os_gstack_cache_max_count  = 4;             // number of prompts to keep in the thread local cache
 static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
 
 #if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be lower than the system stack)
@@ -102,7 +104,9 @@ typedef enum mp_access_e {
   MP_ACCESS_META                  // access in initial meta data (the `free` stack)
 } mp_access_t;
 
-static mp_access_t  mp_gpools_check_access(void* p, ssize_t* available, const mp_gpool_t** gp);
+static mp_access_t  mp_gstack_check_access(void* address, ssize_t* available, ssize_t* stack_size);
+
+static mp_access_t  mp_gpools_check_access(void* address, ssize_t* available, ssize_t* stack_size, const mp_gpool_t** gp);
 static uint8_t*     mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
 static void         mp_gpool_free(uint8_t* stk);
 
@@ -129,18 +133,18 @@ static void     mp_gstack_thread_done(void);
 
 #ifndef NDEBUG
 // Is a pointer in the gstack?
-static bool mp_gstack_contains(mp_gstack_t* g, uint8_t* p) {
+static bool mp_gstack_contains(const mp_gstack_t* g, const uint8_t* p) {
   return (p >= g->stack && p < (g->stack + g->stack_size));
 }
 #endif
 
 // Offset from base of the stack
-static uint8_t* mp_gstack_base_at(mp_gstack_t* g, ssize_t ofs) {
+static uint8_t* mp_gstack_base_at(const mp_gstack_t* g, ssize_t ofs) {
   return (os_stack_grows_down ? g->stack + g->stack_size - ofs : g->stack + ofs);
 }
 
 // Base of the stack
-static uint8_t* mp_gstack_base(mp_gstack_t* g) {
+static uint8_t* mp_gstack_base(const mp_gstack_t* g) {
   return mp_gstack_base_at(g, 0);
 }
 
@@ -150,7 +154,7 @@ static uint8_t* mp_gstack_base(mp_gstack_t* g) {
 
 // The canary is at a fixed distance from the stack bottom to quickly
 // detect if the stack may have grown larger than that. This can avoid doing an explicit memory reset.
-static uint64_t* mp_gstack_get_canary_ptr(mp_gstack_t* g) {
+static uint64_t* mp_gstack_get_canary_ptr(const mp_gstack_t* g) {
   return (uint64_t*)mp_gstack_base_at(g, g->initial_commit - sizeof(uint64_t));
 }
 
@@ -161,7 +165,7 @@ static void mp_gstack_set_canary(mp_gstack_t* g) {
 }
 
 
-static bool mp_gstack_has_valid_canary(mp_gstack_t* g) {
+static bool mp_gstack_has_valid_canary(const mp_gstack_t* g) {
   return (*mp_gstack_get_canary_ptr(g) == MP_GSTACK_CANARY);
 }
 
@@ -290,13 +294,13 @@ void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fu
   uint8_t* base_limit = mp_push(base, g->stack_size, NULL);
   uint8_t* base_entry_sp = mp_push(base, g->initial_reserved + 16 /* a bit extra */, NULL);
 #if _WIN32
-  if (os_use_gpools) {
+  //if (os_use_gpools) {
     // set an artificially low stack limit so our page fault handler gets called and we 
     // can commit quadratically to improve performance.
     ULONG guaranteed = 0;
     SetThreadStackGuarantee(&guaranteed);
     base_limit = base_commit_limit - os_page_size - mp_align_up(guaranteed, os_page_size);
-  }
+  //}
 #endif
   mp_stack_enter(base_entry_sp, base_commit_limit, base_limit, return_jmp, fun, arg);  
 }
@@ -316,7 +320,7 @@ void mp_gstack_free(mp_gstack_t* g, bool delay) {
   }
 
   // otherwise try to put it in our thread local cache...
-  if (_mp_gstack_cache_count < os_gstack_cache_count) {
+  if (_mp_gstack_cache_count < os_gstack_cache_max_count) {
     // allowed to cache.
     // If the cookie is valid, we assume the guard page was never hit and we don't need to do anything.
     // Otherwise we decommit potentially committed memory of a deep stack to reduce memory pressure.
@@ -386,6 +390,26 @@ void mp_gsave_free(mp_gsave_t* gs) {
 }
 
 
+static mp_access_t mp_gstack_check_access(void* address, ssize_t* available, ssize_t* stack_size) {
+  // todo: guard against buffer overflow changing the gstack fields
+  // (using a canary or by allocating the gstack meta data separately)
+  if (available != NULL)  { *available = 0; }
+  if (stack_size != NULL) { *stack_size = 0;  }
+  mp_gstack_t* gs = mp_gstack_current();
+  if (gs == NULL) return MP_NOACCESS;
+  if (stack_size != NULL) { *stack_size = gs->stack_size; }
+  const uint8_t* p = (uint8_t*)address;
+  const uint8_t* stack_end = gs->stack + gs->stack_size;
+  if (p < gs->full || p >= stack_end) return MP_NOACCESS;  
+  if (p > gs->stack) {
+    if (available != NULL) { *available = (p - gs->stack); }    
+    return MP_ACCESS;
+  }
+  else {
+    return MP_NOACCESS_STACK_OVERFLOW;
+  }  
+}
+
 //----------------------------------------------------------------------------------
 // Initialization
 //----------------------------------------------------------------------------------
@@ -410,6 +434,8 @@ bool mp_gstack_init(mp_config_t* config) {
         os_gstack_size = mp_align_up(config->stack_max_size, 4 * MP_KIB);
       }
       os_use_gpools = config->gpool_enable;
+      os_use_overcommit = config->stack_overcommit;
+      os_gstack_grow_fast = config->stack_grow_fast;
       if (config->gpool_max_size > 0) {
         os_gpool_max_size = mp_align_up(config->gpool_max_size, 64 * MP_KIB);
       }
@@ -423,10 +449,10 @@ bool mp_gstack_init(mp_config_t* config) {
         os_gstack_gap = mp_align_up(config->stack_gap_size, 4 * MP_KIB);
       }
       if (config->stack_cache_count > 0) {
-        os_gstack_cache_count = config->stack_cache_count;
+        os_gstack_cache_max_count = config->stack_cache_count;
       }
       else if (config->stack_cache_count < 0) {
-        os_gstack_cache_count = 0;
+        os_gstack_cache_max_count = 0;
       }
     }
 
@@ -457,7 +483,7 @@ bool mp_gstack_init(mp_config_t* config) {
     config->stack_gap_size = os_gstack_gap;
     config->stack_exn_guaranteed = os_gstack_exn_guaranteed;
     config->stack_initial_commit = os_gstack_initial_commit;
-    config->stack_cache_count = os_gstack_cache_count;
+    config->stack_cache_count = os_gstack_cache_max_count;
   }
   return true;
 }

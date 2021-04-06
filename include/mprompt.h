@@ -67,7 +67,9 @@ mp_decl_export mp_resume_t* mp_resume_dup(mp_resume_t* r);    // only myield res
 
 // Configuration settings; any zero value uses the default setting.
 typedef struct mp_config_s {
-  bool      gpool_enable;         // enable gpool by default (on systems without overcommit gpools may still be enabled even if this is false)
+  bool      gpool_enable;         // enable gpools for in-process stack reuse
+  bool      stack_grow_fast;      // set to `true` to use doubling (up to 1MiB) to grow the stack faster
+  bool      stack_overcommit;     // use overcommit on systems that support this (Linux only)
   ptrdiff_t gpool_max_size;       // maximum virtual size per gpool (256 GiB)
   ptrdiff_t stack_max_size;       // maximum virtual size of a gstack (8 MiB)
   ptrdiff_t stack_exn_guaranteed; // guaranteed extra stack space available during exception unwinding (Windows only) (16 KiB)

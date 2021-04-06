@@ -19,7 +19,7 @@
 #include "internal/atomic.h"
 
 // forward declaration 
-static bool mp_gpools_commit_on_demand(void* addr);
+static bool mp_mmap_commit_on_demand(void* addr);
 
 // macOS in debug mode needs an exception port handler 
 #include "gstack_mmap_mach.c"
@@ -101,6 +101,27 @@ static void mp_linux_check_vma_limit(void) {
   #endif
 }
 
+
+// Set initial committed page in a gstack and a guard page to grow on-demand
+static bool mp_mmap_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_initial) {
+  if (os_use_overcommit) {
+    // and make the stack area read/write.       
+    if (!mp_os_mem_commit(stk, stk_size - (commit_initial ? 0 : os_gstack_initial_commit))) {
+      return false;
+    }
+  }
+  else if (commit_initial) {
+    // only commit the initial pages and demand-page the rest
+    uint8_t* base = mp_base(stk, stk_size);
+    uint8_t* commit_start;
+    mp_push(base, os_gstack_initial_commit, &commit_start);
+    if (!mp_os_mem_commit(commit_start, os_gstack_initial_commit)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Allocate a gstack
 static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
   if (!os_use_gpools) {
@@ -114,11 +135,11 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
 
     *stk = full + os_gstack_gap;
     *stk_size = os_gstack_size - 2 * os_gstack_gap;    
-    if (!mp_os_mem_commit(*stk, *stk_size)) {   // and make the stack area read/write.       
+    if (!mp_mmap_initial_commit(*stk, *stk_size, true)) {
       mp_linux_check_vma_limit();
       munmap(full, os_gstack_size);
       return NULL;
-    }    
+    }
     return full;
   }
   else {
@@ -182,6 +203,7 @@ static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
     if (err != 0) {
       mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, reset_size);      
     }
+    mp_mmap_initial_commit(stk, stk_size, false);
     return (err == 0);
   }
 }
@@ -234,16 +256,15 @@ static bool mp_gstack_os_init(void) {
     os_page_size = (size_t)result;
   }
   #endif
-  // do we have overcommit?
+  // can we support overcommit?
   #if defined(__linux__)
-  bool os_has_overcommit = mp_linux_use_overcommit();
-  #else
-  bool os_has_overcommit = false;
-  #endif
-  if (!os_has_overcommit) {
-    os_use_gpools = true;     // we must use gpools if overcommit is not supported
+  if (!mp_linux_use_overcommit()) {
+    os_use_overcommit = false;
   }
-
+  #else
+  os_use_overcommit = false;
+  #endif
+  
   // register pthread key to detect thread termination
   pthread_key_create(&mp_pthread_key, &mp_pthread_done);
 
@@ -266,21 +287,29 @@ static struct sigaction mp_sig_segv_prev_act;
 static struct sigaction mp_sig_bus_prev_act;
 static mp_decl_thread stack_t* mp_sig_stack;  // every thread needs a signal stack in order do demand commit stack pages
 
-static bool mp_gpools_commit_on_demand(void* addr) {
+static bool mp_mmap_commit_on_demand(void* addr) {
   // demand allocate?
   uint8_t* p = mp_align_down_ptr((uint8_t*)addr, os_page_size);
-  ssize_t available;
-  const mp_gpool_t* gp;
-  mp_access_t access = mp_gpools_check_access(p,&available,&gp); 
+  ssize_t available = 0;
+  ssize_t stack_size = 0;
+  const mp_gpool_t* gp = NULL;
+  mp_access_t access = MP_NOACCESS;
+  if (os_use_gpools) {
+    access = mp_gpools_check_access(p, &available, &stack_size, &gp);
+  }
+  else {
+    access = mp_gstack_check_access(p, &available, &stack_size);
+  }
+
   if (access == MP_ACCESS) {
     // a pointer to a valid gstack in our gpool, make the page read-write
     // mp_trace_message("  segv: unprotect page\n");
     // use quadratic growth; quite important for performance
     ssize_t extra = 0;
-    ssize_t used = os_gstack_size - available;
-    if (used > 0) { extra = 2*used; }                // doubling..
-    if (extra > 1 * MP_MIB) { extra = 1 * MP_MIB; }  // up to 1MiB growh
-    if (extra > available) { extra = available; }    // but not more than available
+    ssize_t used = stack_size - available;
+    if (os_gstack_grow_fast && used > 0) { extra = 2*used; }   // doubling..
+    if (extra > 1 * MP_MIB) { extra = 1 * MP_MIB; }            // up to 1MiB growh
+    if (extra > available) { extra = available; }              // but not more than available
     extra = mp_align_down(extra,os_page_size);
     //mp_trace_message("expand stack: extra: %zd, avail: %zd, used: %d\n", extra, available, used);
     p = p - extra;
@@ -290,7 +319,7 @@ static bool mp_gpools_commit_on_demand(void* addr) {
   else if (access == MP_ACCESS_META) {  
     // demand page the mp_gpool_t.free array with zeros
     if (mprotect(p, os_page_size, PROT_READ | PROT_WRITE) == 0) {
-      if (gp!=NULL && !gp->zeroed) {
+      if (gp != NULL && !gp->zeroed) {
         memset(p, 0, os_page_size);  // zero out as well (can be needed with MAP_UNINITIALIZED)
       }
       return true;
@@ -309,7 +338,7 @@ static bool mp_gpools_commit_on_demand(void* addr) {
 static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* arg) {
   // demand allocate?
   //mp_trace_message("sig: signum: %i, addr: %p\n", signum, info->si_addr);
-  if (mp_gpools_commit_on_demand(info->si_addr)) {
+  if (mp_mmap_commit_on_demand(info->si_addr)) {
     return; // ok!
   }
   
@@ -351,7 +380,7 @@ static void mp_gpools_thread_done(void) {
 
 // Each thread needs to register an alternative stack for the signal handler to run in.
 static void mp_gpools_thread_init(void) {
-  if (!os_use_gpools) return; // no need for stack for an on-demand commit handler if the OS has overcommit enabled
+  if (!os_use_gpools && os_use_overcommit) return; // no need for stack for an on-demand commit handler if the OS has overcommit enabled
 
   // use an alternate signal stack (since we handle stack overflows)
   if (mp_sig_stack == NULL) {    
@@ -401,7 +430,7 @@ static void mp_gpools_process_done(void) {
 // At process initialization we register our page fault handler for gpool on-demand paging.
 static void mp_gpools_process_init(void) {
   mp_gpools_thread_init();
-  if (!os_use_gpools) return; // no need for an on-demand commit handler if the OS has overcommit enabledv
+  if (!os_use_gpools && os_use_overcommit) return; // no need for an on-demand commit handler if the OS has overcommit enabledv
 
   // install signal handler
   if (mp_sig_segv_prev_act.sa_sigaction == NULL && mp_sig_segv_prev_act.sa_handler == NULL) {

@@ -26,6 +26,6 @@ mp_gsave_t*  mp_gstack_save(mp_gstack_t* gstack, uint8_t* sp);    // save up to 
 void         mp_gsave_restore(mp_gsave_t* gsave);
 void         mp_gsave_free(mp_gsave_t* gsave);
 
-
+mp_gstack_t* mp_gstack_current(void);             // implemented in <mprompt.c>
 
 #endif

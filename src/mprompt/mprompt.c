@@ -150,6 +150,12 @@ mp_prompt_t* mp_prompt_top(void) {
   return _mp_prompt_top;
 }
 
+// get the current gstack; used for on-demand-paging in gstack_mmap/gstack_win
+mp_gstack_t* mp_gstack_current(void) {
+  mp_prompt_t* top = mp_prompt_top();
+  return (top != NULL ? top->gstack : NULL);
+}
+
 // walk the prompt chain; returns NULL when done.
 // with initial argument `NULL` the first prompt returned is the current top.
 mp_prompt_t* mp_prompt_parent(mp_prompt_t* p) {

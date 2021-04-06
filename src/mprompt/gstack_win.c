@@ -289,9 +289,10 @@ static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* avai
 #define MP_CPP_EXN 0xE06D7363  // "msc"
 
 
-// Guard page fault handler: usually not used as Windows already grows stacks with a guard
-// page automatically; we use it to grow the stack quadratically for performance when using
-// gpool's (`os_use_gpools`).
+// Guard page fault handler: generally not required as Windows already grows stacks with a guard
+// page automatically; we use it to grow the stack quadratically for performance (by 
+// artificially limiting the stack RealLimit in the TIB). This is also required in gpools or otherwise
+// the standard guard page handler expands into the gaps.
 //
 // To avoid errors during RtlUnwindEx we also use this handler to commit extra stack space if a C++ exception is 
 // thrown and little stack space is available. This is needed upfront as once an exception is 
@@ -299,33 +300,39 @@ static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* avai
 // Todo: should we also do this for other (system) exceptions?
 static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   const DWORD exncode = ep->ExceptionRecord->ExceptionCode;
-  if (!((exncode == MP_CPP_EXN) ||
-        (os_use_gpools && (exncode == STATUS_STACK_OVERFLOW || exncode == STATUS_ACCESS_VIOLATION))))  // STATUS_GUARD_PAGE_VIOLATION
-  {
+  if (exncode != MP_CPP_EXN && exncode != STATUS_STACK_OVERFLOW && exncode != STATUS_ACCESS_VIOLATION) {  // STATUS_GUARD_PAGE_VIOLATION
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
   // find the page start
   MP_TIB* tib = mp_win_tib();
-  uint8_t* const addr = (exncode!=MP_CPP_EXN ? (uint8_t*)ep->ExceptionRecord->ExceptionInformation[1] : tib->StackLimit - 8); 
-  uint8_t* const page = mp_align_down_ptr(addr, os_page_size); 
+  uint8_t* const addr = (exncode != MP_CPP_EXN ? (uint8_t*)ep->ExceptionRecord->ExceptionInformation[1] : tib->StackLimit - 8);
+  uint8_t* const page = mp_align_down_ptr(addr, os_page_size);
+  
+  // extra check that the address is within an `os_gstack_size` range of the current stack
+  ssize_t commit_available;
+  uint8_t* base;
+  uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, NULL, &base);
+  if (page < (base - os_gstack_size) || page >= base) {     
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
+
+  // for C++ exceptions we only need to grow if there is actually not enough committed stack left
+  if (exncode == MP_CPP_EXN && commit_available >= os_gstack_exn_guaranteed) {
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
+
+  // determine precisely if the address is in an accessible part of a gstack
   ssize_t available = 0;
+  ssize_t stack_size = 0;
   mp_access_t res = MP_NOACCESS;
   if (os_use_gpools) {
     // with a gpool we can reliably detect if there is available space in one of our gstack's
-    res = mp_gpools_check_access(page, &available, NULL);
+    res = mp_gpools_check_access(page, &available, &stack_size, NULL);
   }
   else {
-    // not using gpools; for C++ exception we still need to guarantee a certain amount of stack space
-    ssize_t commit_available;
-    uint8_t* base;
-    uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, &available, &base);
-    if (sp != NULL && base != mp_win_main_stack_base &&   // check we only grow the current stack (and not outside it!)
-        commit_available < os_gstack_exn_guaranteed &&    // don't grow if not needed
-        available >= os_gstack_exn_guaranteed) 
-    {         
-      res = MP_ACCESS;
-    }
+    // only allow growing on the current gstack (found through the current prompt)
+    res = mp_gstack_check_access(page, &available, &stack_size);
   }
 
   if (res == MP_ACCESS && (exncode == STATUS_STACK_OVERFLOW || exncode == MP_CPP_EXN)) {
@@ -336,16 +343,16 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
     SetThreadStackGuarantee(&guaranteed);
     const ssize_t  guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
 
-    ssize_t extra = 0;
-    ssize_t used = os_gstack_size - os_gstack_gap - available;
-    if (used > 0) {
-      extra = (exncode != MP_CPP_EXN ? 2 * used : os_gstack_exn_guaranteed);  // doubling.. (or just guaranteed size for exceptions)
+    ssize_t extra = (exncode != MP_CPP_EXN ? 0 : os_gstack_exn_guaranteed - os_page_size);
+    ssize_t used = stack_size - available;
+    if (os_gstack_grow_fast && exncode != MP_CPP_EXN && used > 0) {
+      extra = 2 * used;                   // doubling.. 
     }
     if (extra > 1 * MP_MIB) {
       extra = 1 * MP_MIB;                 // up to 1MiB growh
     }
     if (extra > available - guard_size) {
-      extra = available - guard_size;     // up to stack limit
+      extra = available - guard_size;     // up to stack limit 
     }
     extra = mp_align_down(extra, os_page_size);
     if (extra >= 0) {

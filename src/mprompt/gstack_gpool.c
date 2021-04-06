@@ -85,13 +85,15 @@ static mp_gpool_t* mp_gpool_next(const mp_gpool_t* gp) {
 //
 // This routine is called from the pagefault signal handler to verify if 
 // the address is in one of our stacks and is allowed to be committed.
-static mp_access_t mp_gpools_check_access(void* p, ssize_t* available, const mp_gpool_t** gpool) {
+static mp_access_t mp_gpools_check_access(void* p, ssize_t* available, ssize_t* stack_size, const mp_gpool_t** gpool) {
   // for all pools
   if (available != NULL) *available = 0;
+  if (stack_size != NULL) *stack_size = 0;
   if (gpool != NULL) *gpool = NULL;
   for (const mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {    
     ptrdiff_t ofs = (uint8_t*)p - (uint8_t*)gp;
     if (ofs >= 0 && ofs < gp->size) {   // in the pool?
+      if (stack_size != NULL) *stack_size = gp->block_size - gp->gap_size;
       if (ofs <= (ptrdiff_t)sizeof(mp_gpool_t)) {
         // the start page
         if (available != NULL) *available = (sizeof(mp_gpool_t) - ofs);
