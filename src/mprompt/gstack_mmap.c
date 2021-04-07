@@ -19,7 +19,7 @@
 #include "internal/atomic.h"
 
 // forward declaration 
-static bool mp_mmap_commit_on_demand(void* addr);
+static bool mp_mmap_commit_on_demand(void* addr, bool in_other_thread);
 
 // macOS in debug mode needs an exception port handler 
 #include "gstack_mmap_mach.c"
@@ -293,7 +293,7 @@ static struct sigaction mp_sig_segv_prev_act;
 static struct sigaction mp_sig_bus_prev_act;
 static mp_decl_thread stack_t* mp_sig_stack;  // every thread needs a signal stack in order do demand commit stack pages
 
-static bool mp_mmap_commit_on_demand(void* addr) {
+static bool mp_mmap_commit_on_demand(void* addr, bool in_other_thread) {
   // demand allocate?
   uint8_t* page = mp_align_down_ptr((uint8_t*)addr, os_page_size);
   ssize_t available = 0;
@@ -304,7 +304,7 @@ static bool mp_mmap_commit_on_demand(void* addr) {
     // normally we only handle accesses in our current gstack
     access = mp_gstack_check_access(g, page, &stack_size, &available, NULL);
   }
-  else if (os_use_gpools) {
+  else if (in_other_thread && os_use_gpools) {
      // on mach (macOS) while debugging we use a separate mach exception thread handler
      // in that case we can use gpools to determine if the access is in one of our gstacks.
      access = mp_gpools_check_access( page, &stack_size, &available, NULL );
@@ -340,7 +340,7 @@ static bool mp_mmap_commit_on_demand(void* addr) {
 static void mp_sig_handler_commit_on_demand(int signum, siginfo_t* info, void* arg) {
   // demand allocate?
   //mp_trace_message("sig: signum: %i, addr: %p\n", signum, info->si_addr);
-  if (mp_mmap_commit_on_demand(info->si_addr)) {
+  if (mp_mmap_commit_on_demand(info->si_addr, false)) {
     return; // ok!
   }
   
