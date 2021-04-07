@@ -207,35 +207,6 @@ static void mp_gpool_free(uint8_t* stk) {
   }
 }
 
-#if defined(__MACH__)
-// Return a gstack located in any gpool that contains address `p`. Might not be in use (and decommitted)!
-// Currently only used in the mach exception handler thread.
-static mp_gstack_t* mp_gpools_get_gstack_of(void* p) {
-  // for all pools
-  for (const mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {
-    ptrdiff_t ofs = (uint8_t*)p - (uint8_t*)gp;
-    if (ofs >= gp->block_size && ofs < gp->size) {   // in the pool (and not in the first meta block)?
-      ssize_t stack_size = gp->block_size - gp->gap_size;
-      ptrdiff_t block_idx = ofs / gp->block_size;
-      ptrdiff_t block_ofs = ofs % gp->block_size;
-      //mp_trace_message("  gp: %p, ofs: %zd, idx: %zd, bofs: %zd, b/g: %zd / %zd\n", gp, ofs, ofs / gp->block_size, block_ofs, gp->block_size, gp->gap_size);
-      if (block_ofs < stack_size) {  // not in a gap?
-        uint8_t* block = (uint8_t*)gp + (block_idx * gp->block_size);
-        uint8_t* base = mp_base(block, stack_size);
-        mp_gstack_t* g;
-        mp_push(base, mp_gstack_initial_reserved(), (uint8_t**)&g);
-        return g;
-      }
-      else {
-        return NULL;  // in a gap
-      }
-    }
-  }
-  return NULL;
-}
-#endif
-
-/*
 // Is a pointer located in a stack page and thus can be made accessible?
 // This routine is called from exception handler thread while debugging on macOS to verify
 // if the address is in one of our stacks and is allowed to be committed.
@@ -272,4 +243,3 @@ static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t*
   }
   return MP_NOACCESS;
 }
-*/

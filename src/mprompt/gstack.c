@@ -82,11 +82,6 @@ static ssize_t mp_unpush(const uint8_t* sp, const uint8_t* stk, ssize_t stk_size
   return (os_stack_grows_down ? ((stk + stk_size) - sp) : (sp - stk));
 }
 
-static ssize_t mp_gstack_initial_reserved(void) {
-  return mp_align_up(sizeof(mp_gstack_t), 16);
-}
-
-
 
 //----------------------------------------------------------------------------------
 // Platform specific, low-level OS interface.
@@ -113,16 +108,14 @@ typedef enum mp_access_e {
   MP_ACCESS,                      // access in a gstack
   MP_ACCESS_META                  // access in initial meta data (the `free` stack)
 } mp_access_t;
+
 static mp_access_t  mp_gstack_check_access(mp_gstack_t* g, void* address, ssize_t* stack_size, ssize_t* available, ssize_t* commit_available);
 
-// Gpool interface
+// The gpool interface
+typedef struct mp_gpool_s mp_gpool_t;
 static uint8_t*     mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
 static void         mp_gpool_free(uint8_t* stk);
-
-#if defined(__MACH__)
-// static mp_access_t  mp_gpools_check_access(void* address, ssize_t* available, ssize_t* stack_size, const mp_gpool_t** gp);
-static mp_gstack_t* mp_gpools_get_gstack_of(void* p);
-#endif
+static mp_access_t  mp_gpools_check_access(void* address, ssize_t* available, ssize_t* stack_size, const mp_gpool_t** gp);
 
 
 // platform specific definitions are in included files
@@ -156,6 +149,10 @@ static uint8_t* mp_gstack_base_at(const mp_gstack_t* g, ssize_t ofs) {
 // Base of the stack
 static uint8_t* mp_gstack_base(const mp_gstack_t* g) {
   return mp_gstack_base_at(g, 0);
+}
+
+static ssize_t mp_gstack_initial_reserved(void) {
+  return mp_align_up(sizeof(mp_gstack_t), 16);
 }
 
 
