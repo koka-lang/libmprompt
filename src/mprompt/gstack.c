@@ -57,7 +57,7 @@ static ssize_t os_gstack_gap              = 64 * MP_KIB;   // noaccess gap betwe
 static bool    os_gstack_reset_decommits  = false;         // force full decommit when resetting a stack?
 static bool    os_gstack_grow_fast        = false;         // use doubling to grow gstacks (up to 1MiB)
 static ssize_t os_gstack_cache_max_count  = 4;             // number of prompts to keep in the thread local cache
-static ssize_t os_gstack_exn_guaranteed   = 64 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
+static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
 
 #if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be lower than the system stack)
 static ssize_t os_gpool_max_size          = 16 * MP_GIB;   // virtual size of one gstack pooled area (holds about 2^15 gstacks)
