@@ -710,3 +710,11 @@ int mp_backtrace(void** bt, int len) {
 }
 
 #endif
+
+/*
+void mp_gstack_win_test(mp_gstack_t* g);
+void* win_test(mp_prompt_t* p, void* arg) {
+  mp_gstack_win_test(p->gstack);
+  return NULL;
+}
+*/

@@ -108,4 +108,6 @@ mp_decl_export mp_prompt_t* mp_prompt_top(void);
 mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
 
 
+//void* win_test(mp_prompt_t* p, void* arg);
+
 #endif

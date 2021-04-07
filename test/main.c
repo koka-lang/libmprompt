@@ -36,28 +36,29 @@ int main(int argc, char** argv) {
   size_t start_rss = 0;
   mpt_timer_t start = mpt_show_process_info_start(&start_rss);
 
-  // effect handlers
-  reader_run();
-  counter_run();
-  countern_run();
-  mstate_run();
-  rehandle_run();
-
-  //// C++ 
-  exn_run();
-  multi_unwind_run();
-  throw_run();
   
-  // multi-shot tests
-  amb_run();
-  amb_state_run();
-  nqueens_run();
+  // effect handlers
+  // reader_run();
+  // counter_run();
+  // countern_run();
+  // mstate_run();
+  // rehandle_run();
 
-  // threaded test (C++ only)
-  thread_rehandle_run();
+  // //// C++ 
+  // exn_run();
+  // multi_unwind_run();
+  // throw_run();
+  
+  // // multi-shot tests
+  // amb_run();
+  // amb_state_run();
+  // nqueens_run();
+
+  // //// threaded test (C++ only)
+  // thread_rehandle_run();
   
   // direct mprompt tests
-  //mp_async_test1M();  // async workers
+  mp_async_test1M();  // async workers
 
   // low-level mprompt tests
   //mp_test1()

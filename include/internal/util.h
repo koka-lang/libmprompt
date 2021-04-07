@@ -94,6 +94,13 @@ static inline uint8_t* mp_align_down_ptr(uint8_t* p, size_t d) {
   return (uint8_t*)mp_align_down((uintptr_t)p, d);
 }
 
+static inline ssize_t mp_max(ssize_t x, ssize_t y) {
+  return (x >= y ? x : y);
+}
+
+static inline ssize_t mp_min(ssize_t x, ssize_t y) {
+  return (x <= y ? x : y);
+}
 
 /*------------------------------------------------------------------------------
   Malloc interface (to facilitate replacing malloc)

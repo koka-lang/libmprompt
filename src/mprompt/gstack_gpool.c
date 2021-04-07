@@ -80,12 +80,9 @@ static mp_gpool_t* mp_gpool_next(const mp_gpool_t* gp) {
 }
 
 // Is a pointer located in a stack page and thus can be made accessible?
-// This method is the reason way we need gpools: it allows us to reliably (and efficiently)
-// determine if a given address is inside a gstack or not and can be made accessible (or not).
-//
-// This routine is called from the pagefault signal handler to verify if 
-// the address is in one of our stacks and is allowed to be committed.
-static mp_access_t mp_gpools_check_access(void* p, ssize_t* available, ssize_t* stack_size, const mp_gpool_t** gpool) {
+// This routine is called from exception handler thread while debugging on macOS to verify 
+// if the address is in one of our stacks and is allowed to be committed.
+static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t* available, const mp_gpool_t** gpool) {
   // for all pools
   if (available != NULL) *available = 0;
   if (stack_size != NULL) *stack_size = 0;

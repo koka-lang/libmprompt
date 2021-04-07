@@ -17,7 +17,7 @@
 // -----------------------------------------------------
 
 static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* available, ssize_t* stack_size, uint8_t** base);
-static bool     mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_initial);
+static bool     mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, ssize_t* initial_commit, bool commit_initial);
 static void     mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit);
 
 static const char* mp_system_error_message(int errno, const char* fmt, ...);
@@ -76,7 +76,7 @@ static bool mp_os_mem_commit(uint8_t* start, ssize_t size) {
 
 
 // Allocate a gstack
-static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
+static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size, ssize_t* initial_commit) {
   if (!os_use_gpools) {
     // reserve virtual full stack
     uint8_t* full = mp_os_mem_reserve(os_gstack_size);
@@ -85,7 +85,7 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
     *stk = full + os_gstack_gap;
     *stk_size = os_gstack_size - 2 * os_gstack_gap;
     // and initialize the guard page and initial commit
-    if (!mp_win_initial_commit(*stk, *stk_size, true)) {
+    if (!mp_win_initial_commit(*stk, *stk_size, initial_commit, true)) {
       mp_os_mem_free(full, os_gstack_size);
       return NULL;
     }
@@ -98,7 +98,7 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
     if (full == NULL) return NULL;
     
     // and initialize the guard page and initial commit
-    if (!mp_win_initial_commit(*stk, *stk_size, true)) {
+    if (!mp_win_initial_commit(*stk, *stk_size, initial_commit, true)) {
       mp_gpool_free(full);
       return NULL;
     }
@@ -107,7 +107,8 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
 }
 
 // Set initial committed page in a gstack and a guard page to grow on-demand
-static bool mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_initial) {
+static bool mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, ssize_t* initial_commit, bool commit_initial) {
+  if (initial_commit != NULL) *initial_commit = 0;
   if (stk == NULL) return false;
   uint8_t* base = mp_base(stk, stk_size);
   uint8_t* commit_start;
@@ -117,10 +118,11 @@ static bool mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_in
     if (!mp_os_mem_commit(commit_start, os_gstack_initial_commit)) {
       return false;
     }
+    if (initial_commit != NULL) *initial_commit = os_gstack_initial_commit;
   }  
-  // set a guard page to grow on demand; this is handled by the OS since it cannot call a user fault handler as
+  // Set a guard page to grow on demand; this is handled by the OS since it cannot call a user fault handler as
   // the stack just ran out. It will raise a stack-overflow once the end of the reserved space is reached.
-  // the actual guard pages is determined by the Windows thread stack guarantee.
+  // the actual number of guard pages is determined by the Windows thread stack guarantee.
   ULONG guaranteed = 0;
   SetThreadStackGuarantee(&guaranteed);
   ssize_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
@@ -130,67 +132,32 @@ static bool mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_in
     mp_system_error_message(ENOMEM, "failed to set guard page at %p of size %zd\n", guard_start, guard_size);
     return false;
   }       
+  //mp_trace_message("initial commit at %p\n", commit_start);
+  //mp_win_trace_stack_layout(base, stk);
   return true;
 }
 
 // Free the memory of a gstack
-static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
+static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size, ssize_t stk_commit) {
   if (full == NULL) return;
   if (!os_use_gpools) {
     mp_os_mem_free(full, os_gstack_size);
   }
   else {
+    stk_size   = mp_align_up(stk_size, os_page_size);
+    stk_commit = mp_align_down(stk_commit, os_page_size);
+    // decommit entire range      
+    // Note: we cannot reset partly as a new allocation sets up an initial guard page
+    //  and inside C++ exception handling routines the `__chkstk` may fail if these are not in a contiguous virtual area.
+    //  For now, this means there is not much advantage to using gpools on Windows. A way to improve this 
+    //  would be to also track if an block in a gpool is being reused without needing to set up a fresh guard page.
     #pragma warning(suppress:6250) // warning: MEM_DECOMMIT does not free the memory
-    if (VirtualFree(stk, stk_size, MEM_DECOMMIT) == NULL) {  // we cannot use MEM_RESET as that puts the guard pages into an invalid state
+    if (VirtualFree(stk, stk_size, MEM_DECOMMIT) == NULL) {
       mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, stk_size);
-    };
+    };    
+    //mp_trace_message("deallocated gstack:\n");
+    //mp_win_trace_stack_layout(mp_base(stk, stk_size), stk);
     mp_gpool_free(full);
-  }
-}
-
-// Reset the memory in a gstack
-static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size, bool reset_all) {
-  ssize_t reset_size;
-  if (reset_all) {
-    reset_size = stk_size;
-  }
-  else {
-    ULONG guaranteed = 0;
-    SetThreadStackGuarantee(&guaranteed);
-    ssize_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
-    reset_size = stk_size - os_gstack_initial_commit - guard_size;
-  }
-  if (reset_size <= 0) return true;
-  if (!os_gstack_reset_decommits) {
-    // reset memory pages up to the initial commit
-    // note: this makes the physical memory available again but may still show
-    //       up in the working set until it is actually reused :-( The advantage is that
-    //       these pages no longer need to be zero'd, nor do we need to set the guard page again,
-    //       and thus this can be more efficient.
-    // todo: is the current call ok since it includes a mix of committed and decommitted pages?
-    //       we should perhaps only reset the committed range? (seems ok)
-    //       what if this resets a guard page? (also seems ok)
-    if (VirtualAlloc(stk, reset_size, MEM_RESET, PAGE_NOACCESS /* ignored */) == NULL) {
-      mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", stk, reset_size);
-      return false;
-    }    
-    return true;
-  }
-  else {
-    // decommit any committed pages up to the initial commit and reset the guard page
-    // note: this will recommit on demand and gives zero'd pages which may be expensive.
-    #pragma warning(suppress:6250) // warning: MEM_DECOMMIT does not free the memory
-    if (!VirtualFree(stk, reset_size, MEM_DECOMMIT)) {
-      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, reset_size);
-      return false;
-    }
-    if (reset_all) {
-      return true;
-    }
-    else {
-      // .. and reinitialize guard
-      return mp_win_initial_commit(stk, stk_size, false);
-    }
   }
 }
 
@@ -234,13 +201,16 @@ static bool mp_gstack_os_init(void) {
   mp_win_fls_key = FlsAlloc(&mp_win_thread_done);
   atexit(&mp_win_process_done);
 
-  // install a page fault handler to grow gstack's on demand 
-  // we also install this even if no `gpool`s are used in order to guarantee enough
-  // stack space during exception unwinding on a gstack.
+  // install a page fault handler to grow gstack's on demand and prevent
+  // guard pages to grow into the gaps in a gpool (as that is one contiguous reserved space)  
+  // Moreover, we always need this handler to guarantee enough stack space 
+  // during C++ exception handling: it seems the system will only grow the system
+  // stack automatically during an exception and now our gstacks.
   PVOID handler = AddVectoredExceptionHandler(1, &mp_gstack_win_page_fault);
   if (handler == NULL) {
     mp_system_error_message(EINVAL, "unable to install page fault handler -- fall back to guarded demand paging\n");
-    os_use_gpools = false; // fall back to regular demand paging 
+    os_use_gpools = false;        // fall back to regular demand paging 
+    os_gstack_grow_fast = false;
   }
   
   return true;
@@ -308,19 +278,21 @@ static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* avai
 // C++ exceptions are identified by this exception code on MSVC
 #define MP_CPP_EXN 0xE06D7363  // "msc"
 
-
 // Guard page fault handler: generally not required as Windows already grows stacks with a guard
-// page automatically; we use it to grow the stack quadratically for performance (by 
-// artificially limiting the stack RealLimit in the TIB). This is also required in gpools or otherwise
-// the standard guard page handler expands into the gaps.
+// page automatically; we use it to: 
+// 1. grow the stack quadratically for performance 
+// 2. prevent gpool gstack from growing into gaps (since a gpool is a contiguous reserved area)
+// We do this by artificially limiting the `StackRealLimit` in the TIB which triggers the fault handler. 
 //
-// To avoid errors during RtlUnwindEx we also use this handler to commit extra stack space if a C++ exception is 
-// thrown and little stack space is available. This is needed upfront as once an exception is 
-// being unwound, our fault handler cannot be invoked again during that time.
-// Todo: should we also do this for other (system) exceptions?
-static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
+// But we also always need to avoid errors during RtlUnwindEx. It seems that during a C++ exeption
+// only guard pages in the system stack are grown automatically but not guards in gstacks.
+// (This might be because we are already handling exceptions so the OS cannot fault again).
+// We work around this by guaranteeing `os_gstack_exn_guaranteed` stack upfront as soon as an 
+// exception is being thrown and thus avoiding faults during the actual unwinding.
+static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) 
+{
   const DWORD exncode = ep->ExceptionRecord->ExceptionCode;
-  if (exncode != MP_CPP_EXN && exncode != STATUS_STACK_OVERFLOW && exncode != STATUS_ACCESS_VIOLATION) {  // STATUS_GUARD_PAGE_VIOLATION
+  if (exncode != MP_CPP_EXN && exncode != STATUS_STACK_OVERFLOW && exncode != STATUS_ACCESS_VIOLATION) { // && exncode != STATUS_GUARD_PAGE_VIOLATION
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
@@ -328,43 +300,31 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
   MP_TIB* tib = mp_win_tib();
   uint8_t* const addr = (exncode != MP_CPP_EXN ? (uint8_t*)ep->ExceptionRecord->ExceptionInformation[1] : tib->StackLimit - 8);
   uint8_t* const page = mp_align_down_ptr(addr, os_page_size);
-  
-  // extra check that the address is within an `os_gstack_size` range of the current stack
-  ssize_t commit_available;
-  uint8_t* base;
-  uint8_t* sp = mp_win_tib_get_stack_extent(tib, &commit_available, NULL, NULL, &base);
-  if (page < (base - os_gstack_size) || page >= base) {     
-    return EXCEPTION_CONTINUE_SEARCH;
-  }
+    
+  // determine precisely if the address is in an accessible part of the current gstack
+  ssize_t available = 0;
+  ssize_t commit_available = 0;
+  ssize_t stack_size = 0;
+  mp_gstack_t* g = mp_gstack_current();
+  mp_access_t res = mp_gstack_check_access(g, page, &stack_size, &available, &commit_available);
 
   // for C++ exceptions we only need to grow if there is actually not enough committed stack left
   if (exncode == MP_CPP_EXN && commit_available >= os_gstack_exn_guaranteed) {
+    //mp_win_trace_stack_layout(NULL, NULL);
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
-  // determine precisely if the address is in an accessible part of a gstack
-  ssize_t available = 0;
-  ssize_t stack_size = 0;
-  mp_access_t res = MP_NOACCESS;  
-  if (os_use_gpools) {
-    // with a gpool we can reliably detect if there is available space in one of our gstack's
-    res = mp_gpools_check_access(page, &available, &stack_size, NULL);
-  }
-  else {
-    // only allow growing on the current gstack (found through the current prompt)
-    res = mp_gstack_check_access(page, &available, &stack_size);
-  }
-
-  if (res == MP_ACCESS && (exncode == STATUS_STACK_OVERFLOW || exncode == MP_CPP_EXN)) {
-    // pointer in our gpool stack, make the page read-write
-    // or, c++ throw and we need to guarantee stack size before the exception is being unwound.
-    // use doubling growth; important for performance, see `main.cpp:test1M`.
+  if (res == MP_ACCESS) {
+    // pointer in our gstack, make the page read-write
+    // (or, for c++ exception we need to guarantee stack size before the exception is being unwound).    
     ULONG    guaranteed = 0;
     SetThreadStackGuarantee(&guaranteed);
     const ssize_t  guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
 
+    // reserve always one page + `extra`.
     ssize_t extra = (exncode != MP_CPP_EXN ? 0 : os_gstack_exn_guaranteed - os_page_size);
     ssize_t used = stack_size - available;
+    mp_assert_internal(used >= 0);
     if (os_gstack_grow_fast && exncode != MP_CPP_EXN && used > 0) {
       extra = 2 * used;                   // doubling.. 
     }
@@ -376,32 +336,30 @@ static LONG WINAPI mp_gstack_win_page_fault(PEXCEPTION_POINTERS ep) {
     }
     extra = mp_align_down(extra, os_page_size);
     if (extra >= 0) {
-      uint8_t* const extend = (uint8_t*)page - extra;
-      if (VirtualAlloc(extend, extra + os_page_size, MEM_COMMIT, PAGE_READWRITE) != NULL) {
-        uint8_t* const gpage = extend - guard_size;
+      uint8_t* extend; 
+      mp_push(page, extra, &extend);
+      ssize_t commit_size = extra + os_page_size;
+      if (VirtualAlloc(extend, commit_size, MEM_COMMIT, PAGE_READWRITE) != NULL) {
+        uint8_t* gpage;
+        mp_push(extend, guard_size, &gpage);
         if (VirtualAlloc(gpage, guard_size, MEM_COMMIT, PAGE_GUARD | PAGE_READWRITE) != NULL) {
           tib->StackLimit = extend;
           tib->StackRealLimit = gpage; 
-          //mp_trace_message("expanded stack: extra: %zdk, available: %zdk, used: %zdk\n", extra/1024, available/1024, used/1024);
-          //mp_trace_stack_layout(NULL, NULL);
+          if (g != NULL) { g->committed = mp_unpush(extend, g->stack, g->stack_size); }
+          //mp_trace_message("expanded stack: extra: %zdk, available: %zdk, stack_size: %zdk, used: %zdk\n", extra/1024, available/1024, g->stack_size/1024, used/1024);
+          //mp_win_trace_stack_layout(tib->StackBase, tib->StackBase - g->stack_size);
           return (exncode!=MP_CPP_EXN ? EXCEPTION_CONTINUE_EXECUTION : EXCEPTION_CONTINUE_SEARCH);
         }
       }
     }
   }
-  else if (res == MP_ACCESS_META && exncode == STATUS_ACCESS_VIOLATION) {
-    // at the start of a gpool for zero'ing
-    if (VirtualAlloc(page, os_page_size, MEM_COMMIT, PAGE_READWRITE) != NULL) {
-      return EXCEPTION_CONTINUE_EXECUTION;
-    }
-  }
-
+  
   return EXCEPTION_CONTINUE_SEARCH;  
 }
 
 
 // -----------------------------------------------------
-// Util
+// Debug tests
 // -----------------------------------------------------
 
 static void mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit) {
@@ -435,3 +393,49 @@ static void mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit) {
   };
   mp_trace_message("---------------------------------------------------\n");
 }
+
+/*
+
+void win_probe(uint8_t* base, uint8_t* base_limit, int count) {
+  for (int i = 0; i < count; i++) {
+    uint8_t* p = base - ((i + 1) * os_page_size);
+    *p = (uint8_t)i;
+  }
+  mp_win_trace_stack_layout(base, base_limit);
+}
+
+void mp_gstack_win_test(mp_gstack_t* g) {
+  uint8_t* stk = g->stack;
+  ssize_t  stk_size = g->stack_size;
+  uint8_t * base = mp_base(stk, stk_size);
+  uint8_t* base_limit = stk;
+  mp_win_trace_stack_layout(base, base_limit);
+
+  win_probe(base, base_limit, 8);
+
+  ssize_t reset_size = stk_size - os_page_size;
+  MP_TIB* tib = mp_win_tib();
+
+  //if (!VirtualProtect(tib->StackRealLimit, os_page_size, PAGE_READWRITE, NULL)) {
+  //  mp_system_error_message(EINVAL, "mem_protect\n");
+  //}
+  ssize_t commit_size = mp_align_down(tib->StackBase - tib->StackLimit, os_page_size);
+  DWORD err = DiscardVirtualMemory(tib->StackLimit, commit_size);
+  //if (err != ERROR_SUCCESS) {
+  //  mp_system_error_message(EINVAL, "mem_discard: %x\n", err);
+  //}
+  //if (VirtualAlloc(stk, reset_size, MEM_RESET, PAGE_NOACCESS) == NULL) {
+  //  mp_system_error_message(EINVAL, "mem_reset\n");
+  //}
+  mp_win_trace_stack_layout(base, base_limit);
+
+  mp_win_initial_commit(stk, reset_size, true);
+  mp_win_trace_stack_layout(base, base_limit);
+  
+  tib->StackLimit = mp_push(base, 2*os_page_size, NULL);
+  tib->StackRealLimit = mp_push(base, 3*os_page_size, NULL);
+  mp_win_trace_stack_layout(base, base_limit);
+
+  win_probe(base, base_limit, 10);
+}
+*/

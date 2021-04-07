@@ -24,16 +24,33 @@ static bool mp_mmap_commit_on_demand(void* addr);
 // macOS in debug mode needs an exception port handler 
 #include "gstack_mmap_mach.c"
 
+
 //----------------------------------------------------------------------------------
-// The OS primitive `gstack` interface based on `mmap`.
+// The OS memory low-level allocation primitives
 //----------------------------------------------------------------------------------
+
+// Extra error message on Linux since often ENOMEM means the VMA limit is too low
+static void mp_linux_check_vma_limit(void) {
+  #if defined(__linux__)
+  if (errno == ENOMEM) {
+    mp_error_message(ENOMEM, "the previous error may have been caused by a low memory map limit.\n"
+                              "  On Linux this can be controlled by increasing the vm.max_map_count. For example:\n"
+                              "  > sudo sysctl -w vm.max_map_count=1000000\n");
+  }
+  #endif
+}
+
 
 static uint8_t* mp_os_mmap_reserve(size_t size, int prot, bool* zeroed) {
   #if !defined(MAP_ANONYMOUS)
   # define MAP_ANONYMOUS  MAP_ANON
   #endif
   #if !defined(MAP_NORESERVE)
-  # define MAP_NORESERVE  0
+  # if defined(MAP_LAZY)  
+  #  define MAP_NORESERVE  MAP_LAZY
+  # else
+  #  define MAP_NORESERVE  0
+  # endif
   #endif
   #if !defined(MAP_STACK)
   # define MAP_STACK  0
@@ -55,12 +72,13 @@ static uint8_t* mp_os_mmap_reserve(size_t size, int prot, bool* zeroed) {
   #endif
   int fd = -1;
   #if defined(VM_MAKE_TAG)
-  // macOS: tracking anonymous page with a specific ID. (All up to 98 are taken officially but LLVM sanitizers had taken 99 and mimalloc 100)
+  // macOS: tracking anonymous page with a specific ID. (All up to 98 are taken officially but LLVM sanitizers have taken 99 and mimalloc 100)
   fd = VM_MAKE_TAG(101);
   #endif
   uint8_t* p = (uint8_t*)mmap(NULL, size, prot, flags, fd, 0);
   if (p == MAP_FAILED) {
     mp_system_error_message(ENOMEM, "failed to allocate mmap memory of size %zu\n", size);
+    mp_linux_check_vma_limit();      
     return NULL;
   }
   return p;
@@ -84,33 +102,63 @@ static void  mp_os_mem_free(uint8_t* p, ssize_t size) {
 static bool mp_os_mem_commit(uint8_t* start, ssize_t size) {
   if (mprotect(start, size, PROT_READ | PROT_WRITE) != 0) {   
     mp_system_error_message(ENOMEM, "failed to commit memory at %p of size %zd\n", start, size);
+    mp_linux_check_vma_limit();      
     return false;
   }
   return true;
 }
 
-
-// Extra error message on Linux since often ENOMEM means the VMA limit is too low
-static void mp_linux_check_vma_limit(void) {
-  #if defined(__linux__)
-  if (errno == ENOMEM) {
-    mp_error_message(ENOMEM, "the previous error may have been caused by a low memory map limit.\n"
-                              "  On Linux this can be controlled by increasing the vm.max_map_count. For example:\n"
-                              "  > sudo sysctl -w vm.max_map_count=1000000\n");
+// Reset the memory of a gstack
+static bool mp_os_mem_reset(uint8_t* p, ssize_t size) {
+  // we can only decommit if MAP_FIXED is defined
+  #if defined(MAP_FIXED)  
+  if (os_gstack_reset_decommits) {
+    // mmap with PROT_NONE to reduce commit charge
+    if (mmap(p, size, PROT_NONE, (MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE), -1, 0) == MAP_FAILED) {
+      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", p, size);
+      return false;      
+    }
+    return true;
   }
   #endif
+
+  // reset using madvise
+  #if defined(MADV_FREE_REUSABLE)           
+  static int advice = MADV_FREE_REUSABLE;
+  #elif defined(MADV_FREE)                 
+  static int advice = MADV_FREE;
+  #else
+  static int advice = MADV_DONTNEED;
+  #endif  
+  int err = madvise(p, size, advice);
+  if (err != 0 && errno == EINVAL && advice != MADV_DONTNEED) {
+    // if MADV_FREE/MADV_FREE_REUSABLE is not supported, fall back to MADV_DONTNEED from now on
+    advice = MADV_DONTNEED;
+    err = madvise(p, size, MADV_DONTNEED);
+  }
+  if (err != 0) {
+    mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", p, size);
+  }
+  return (err == 0);  
 }
 
 
+//----------------------------------------------------------------------------------
+// The OS primitive `gstack` interface based on `mmap`.
+//----------------------------------------------------------------------------------
+
+
 // Set initial committed page in a gstack and a guard page to grow on-demand
-static bool mp_mmap_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_initial) {
+static bool mp_mmap_initial_commit(uint8_t* stk, ssize_t stk_size, ssize_t* initial_commit) {
+  if (initial_commit != NULL) *initial_commit = 0;
   if (os_use_overcommit) {
     // and make the stack area read/write.       
-    if (!mp_os_mem_commit(stk, stk_size - (commit_initial ? 0 : os_gstack_initial_commit))) {
+    if (!mp_os_mem_commit(stk, stk_size)) {
       return false;
     }
+    if (initial_commit != NULL) *initial_commit = stk_size;
   }
-  else if (commit_initial) {
+  else {
     // only commit the initial pages and demand-page the rest
     uint8_t* base = mp_base(stk, stk_size);
     uint8_t* commit_start;
@@ -118,25 +166,25 @@ static bool mp_mmap_initial_commit(uint8_t* stk, ssize_t stk_size, bool commit_i
     if (!mp_os_mem_commit(commit_start, os_gstack_initial_commit)) {
       return false;
     }
+    if (initial_commit != NULL) *initial_commit = os_gstack_initial_commit;
   }
   return true;
 }
 
 // Allocate a gstack
-static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
+static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size, ssize_t* initial_commit) {
+  if (initial_commit != NULL) { *initial_commit = 0; }
   if (!os_use_gpools) {
     // use NORESERVE to let the OS commit on demand
     bool zeroed = false; // don't require zeros
     uint8_t* full = mp_os_mmap_reserve(os_gstack_size, PROT_NONE, &zeroed);
     if (full == NULL) {
-      mp_linux_check_vma_limit();
       return NULL;
     }
 
     *stk = full + os_gstack_gap;
     *stk_size = os_gstack_size - 2 * os_gstack_gap;    
-    if (!mp_mmap_initial_commit(*stk, *stk_size, true)) {
-      mp_linux_check_vma_limit();
+    if (!mp_mmap_initial_commit(*stk, *stk_size, initial_commit)) {
       munmap(full, os_gstack_size);
       return NULL;
     }
@@ -146,68 +194,24 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stk, ssize_t* stk_size) {
     // use the gpool allocator to commit-on-demand even on over-commit systems (using a signal handler)
     uint8_t* full = mp_gpool_alloc(stk,stk_size);
     if (full == NULL) return NULL;      
-    // (try to) commit the initial page to reduce page faults
-    uint8_t* init = (os_stack_grows_down ? *stk + (*stk_size - os_gstack_initial_commit) : *stk);
-    mp_os_mem_commit(init, os_gstack_initial_commit);
+    if (!mp_mmap_initial_commit(*stk, *stk_size, initial_commit)) {
+      mp_gpool_free(full);
+      return NULL;
+    }
     return full;
-  }
+  }  
 }
 
 // Free the memory of a gstack
-static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size) {
+static void mp_gstack_os_free(uint8_t* full, uint8_t* stk, ssize_t stk_size, ssize_t stk_commit) {
+  MP_UNUSED(stk_commit);
   if (!os_use_gpools) {
     mp_os_mem_free(full,os_gstack_size);
   }
   else {
-    mp_gstack_os_reset(full, stk, stk_size, true);
+    // reset the full range. todo: just reset the actual committed range?
+    mp_os_mem_reset(stk,stk_size);
     mp_gpool_free(full);
-  }
-}
-
-// Reset the memory of a gstack
-static bool mp_gstack_os_reset(uint8_t* full, uint8_t* stk, ssize_t stk_size, bool reset_all) {
-  MP_UNUSED(full);
-  // reset memory pages up to the initial commit
-  ssize_t  reset_size = stk_size - (reset_all ? 0 : os_gstack_initial_commit);
-  if (!os_gstack_reset_decommits) {
-    // todo: use mmap(PROT_NONE) and back to PROT_READ|PROT_WRITE to force decommit?
-    #if defined(MADV_FREE_REUSABLE)
-    static int advice = MADV_FREE_REUSABLE;
-    #elif defined(MADV_FREE)
-    static int advice = MADV_FREE;
-    #else
-    static int advice = MADV_DONTNEED;
-    #endif  
-    int err = madvise(stk, reset_size, advice);
-    if (err != 0 && errno == EINVAL && advice != MADV_DONTNEED) {
-      // if MADV_FREE/MADV_FREE_REUSABLE is not supported, fall back to MADV_DONTNEED from now on
-      advice = MADV_DONTNEED;
-      err = madvise(stk, reset_size, MADV_DONTNEED);
-    }
-    if (err != 0) {
-      mp_system_error_message(EINVAL, "failed to reset memory at %p of size %zd\n", stk, reset_size);
-    }
-    return (err == 0);
-  } 
-  else {
-    int err = 0;
-    #if defined(MAP_FIXED)
-      // mmap with PROT_NONE to reduce commit charge 
-      void* p = mmap(stk, reset_size, PROT_NONE, (MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE), -1, 0);
-      if (p == MAP_FAILED) {
-        err = errno;
-      }
-    #else
-      // mprotect with PROT_NONE
-      int err = mprotect(stk, reset_size, PROT_NONE);
-    #endif
-    if (err != 0) {
-      mp_system_error_message(EINVAL, "failed to decommit memory at %p of size %zd\n", stk, reset_size);      
-    }
-    if (!reset_all) {
-      mp_mmap_initial_commit(stk, stk_size, false);
-    }
-    return (err == 0);
   }
 }
 
@@ -260,12 +264,11 @@ static bool mp_gstack_os_init(void) {
   }
   #endif
   // can we support overcommit?
-  #if defined(__linux__)
-  if (!mp_linux_use_overcommit()) {
-    os_use_overcommit = false;
-  }
-  #else
   os_use_overcommit = false;
+  #if defined(__linux__)
+  if (!(os_use_gpools || os_gstack_grow_fast) && mp_linux_use_overcommit()) {
+    os_use_overcommit = true;
+  }
   #endif
   
   // register pthread key to detect thread termination
@@ -292,18 +295,21 @@ static mp_decl_thread stack_t* mp_sig_stack;  // every thread needs a signal sta
 
 static bool mp_mmap_commit_on_demand(void* addr) {
   // demand allocate?
-  uint8_t* p = mp_align_down_ptr((uint8_t*)addr, os_page_size);
+  uint8_t* page = mp_align_down_ptr((uint8_t*)addr, os_page_size);
   ssize_t available = 0;
   ssize_t stack_size = 0;
-  const mp_gpool_t* gp = NULL;
   mp_access_t access = MP_NOACCESS;
-  if (os_use_gpools) {
-    access = mp_gpools_check_access(p, &available, &stack_size, &gp);
+  mp_gstack_t* g = mp_gstack_current();  
+  if (g != NULL) {
+    // normally we only handle accesses in our current gstack
+    access = mp_gstack_check_access(g, page, &stack_size, &available, NULL);
   }
-  else {
-    access = mp_gstack_check_access(p, &available, &stack_size);
+  else if (os_use_gpools) {
+     // on mach (macOS) while debugging we use a separate mach exception thread handler
+     // in that case we can use gpools to determine if the access is in one of our gstacks.
+     access = mp_gpools_check_access( page, &stack_size, &available, NULL );
   }
-
+  
   if (access == MP_ACCESS) {
     // a pointer to a valid gstack in our gpool, make the page read-write
     // mp_trace_message("  segv: unprotect page\n");
@@ -315,23 +321,16 @@ static bool mp_mmap_commit_on_demand(void* addr) {
     if (extra > available) { extra = available; }              // but not more than available
     extra = mp_align_down(extra,os_page_size);
     //mp_trace_message("expand stack: extra: %zd, avail: %zd, used: %d\n", extra, available, used);
-    p = p - extra;
-    mprotect(p, extra + os_page_size, PROT_READ | PROT_WRITE);
+    uint8_t* commit_start;
+    mp_push(page, extra, &commit_start);
+    if (mprotect(commit_start, extra + os_page_size, PROT_READ | PROT_WRITE) == 0) {
+      if (g != NULL) { g->committed = mp_unpush(commit_start, g->stack, g->stack_size ); }
+    };
     return true; 
-  }
-  else if (access == MP_ACCESS_META) {  
-    // demand page the mp_gpool_t.free array with zeros
-    if (mprotect(p, os_page_size, PROT_READ | PROT_WRITE) == 0) {
-      if (gp != NULL && !gp->zeroed) {
-        memset(p, 0, os_page_size);  // zero out as well (can be needed with MAP_UNINITIALIZED)
-      }
-      return true;
-    }    
   }
   else if (access == MP_NOACCESS_STACK_OVERFLOW) {
     // stack overflow
     mp_error_message(EINVAL,"stack overflow at %p\n", addr);  // abort?
-    return false;
   }
   
   // not in one of our pools or error
