@@ -79,8 +79,13 @@ static uint8_t* mp_push(uint8_t* sp, ssize_t size, uint8_t** start) {
 
 // Return how far a pointer is into a stack taking stack direction into account
 static ssize_t mp_unpush(const uint8_t* sp, const uint8_t* stk, ssize_t stk_size) {
-return (os_stack_grows_down ? ((stk + stk_size) - sp) : (sp - stk));
+  return (os_stack_grows_down ? ((stk + stk_size) - sp) : (sp - stk));
 }
+
+static ssize_t mp_gstack_initial_reserved(void) {
+  return mp_align_up(sizeof(mp_gstack_t), 16);
+}
+
 
 
 //----------------------------------------------------------------------------------
@@ -94,30 +99,30 @@ static uint8_t* mp_gstack_os_alloc(uint8_t** stack, ssize_t* stack_size, ssize_t
 static void     mp_gstack_os_free(uint8_t* full, uint8_t* stack, ssize_t stack_size, ssize_t stk_commit);
 static bool     mp_gstack_os_init(void);
 static void     mp_gstack_os_thread_init(void);
+static void     mp_gstack_thread_done(void);  // called by hook installed in os specific include
 
 // Used by the gpool implementation
 static uint8_t* mp_os_mem_reserve(ssize_t size);
 static void     mp_os_mem_free(uint8_t* p, ssize_t size);
 static bool     mp_os_mem_commit(uint8_t* start, ssize_t size);
 
-// gpool interface
-typedef struct  mp_gpool_s mp_gpool_t;
-
+// Used by signal handler to check access
 typedef enum mp_access_e {
   MP_NOACCESS,                    // no access (outside pool)
   MP_NOACCESS_STACK_OVERFLOW,     // no access due to stack overflow (in gap)
   MP_ACCESS,                      // access in a gstack
   MP_ACCESS_META                  // access in initial meta data (the `free` stack)
 } mp_access_t;
-
 static mp_access_t  mp_gstack_check_access(mp_gstack_t* g, void* address, ssize_t* stack_size, ssize_t* available, ssize_t* commit_available);
 
-static mp_access_t  mp_gpools_check_access(void* address, ssize_t* available, ssize_t* stack_size, const mp_gpool_t** gp);
+// Gpool interface
 static uint8_t*     mp_gpool_alloc(uint8_t** stk, ssize_t* stk_size);
 static void         mp_gpool_free(uint8_t* stk);
 
-// called by hook installed in os specific include
-static void     mp_gstack_thread_done(void);  
+#if defined(__MACH__)
+// static mp_access_t  mp_gpools_check_access(void* address, ssize_t* available, ssize_t* stack_size, const mp_gpool_t** gp);
+static mp_gstack_t* mp_gpools_get_gstack_of(void* p);
+#endif
 
 
 // platform specific definitions are in included files
@@ -163,11 +168,6 @@ static uint8_t* mp_gstack_base(const mp_gstack_t* g) {
 // We have a small cache per thread of stacks to avoid going to the OS too often.
 static mp_decl_thread mp_gstack_t* _mp_gstack_cache;
 static mp_decl_thread ssize_t      _mp_gstack_cache_count;
-
-
-static ssize_t mp_gstack_initial_reserved(void) {
-  return mp_align_up(sizeof(mp_gstack_t), 16);
-}
 
 
 // We have a delayed free list to keep gstacks alive during exception unwinding

@@ -79,42 +79,6 @@ static mp_gpool_t* mp_gpool_next(const mp_gpool_t* gp) {
   return (gp == NULL ? mp_gpool_first() : gp->next);
 }
 
-// Is a pointer located in a stack page and thus can be made accessible?
-// This routine is called from exception handler thread while debugging on macOS to verify 
-// if the address is in one of our stacks and is allowed to be committed.
-static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t* available, const mp_gpool_t** gpool) {
-  // for all pools
-  if (available != NULL) *available = 0;
-  if (stack_size != NULL) *stack_size = 0;
-  if (gpool != NULL) *gpool = NULL;
-  for (const mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {    
-    ptrdiff_t ofs = (uint8_t*)p - (uint8_t*)gp;
-    if (ofs >= 0 && ofs < gp->size) {   // in the pool?
-      if (stack_size != NULL) *stack_size = gp->block_size - gp->gap_size;
-      if (ofs <= (ptrdiff_t)sizeof(mp_gpool_t)) {
-        // the start page
-        if (available != NULL) *available = (sizeof(mp_gpool_t) - ofs);
-        if (gpool != NULL) *gpool = gp;
-        return MP_ACCESS_META;
-      }
-      else {
-        ptrdiff_t block_ofs = ofs % gp->block_size;
-        //mp_trace_message("  gp: %p, ofs: %zd, idx: %zd, bofs: %zd, b/g: %zd / %zd\n", gp, ofs, ofs / gp->block_size, block_ofs, gp->block_size, gp->gap_size);
-        if (block_ofs < (gp->block_size - gp->gap_size)) {  // not in a gap?
-          ssize_t avail = (os_stack_grows_down ? block_ofs : gp->block_size - gp->gap_size - block_ofs);
-          if (available != NULL) *available = avail;
-          if (gpool != NULL) *gpool = gp;
-          return (avail == 0 ? MP_NOACCESS_STACK_OVERFLOW : MP_ACCESS);
-        }
-        else {
-          // stack overflow
-          return MP_NOACCESS_STACK_OVERFLOW;
-        }
-      }
-    }
-  }
-  return MP_NOACCESS;
-}
 
 // Create a new pool in a given reserved virtual memory area.
 static mp_gpool_t* mp_gpool_create(void* p, ssize_t size, ssize_t stack_size, ssize_t gap_size, bool zeroed) {
@@ -242,3 +206,70 @@ static void mp_gpool_free(uint8_t* stk) {
     }
   }
 }
+
+#if defined(__MACH__)
+// Return a gstack located in any gpool that contains address `p`. Might not be in use (and decommitted)!
+// Currently only used in the mach exception handler thread.
+static mp_gstack_t* mp_gpools_get_gstack_of(void* p) {
+  // for all pools
+  for (const mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {
+    ptrdiff_t ofs = (uint8_t*)p - (uint8_t*)gp;
+    if (ofs >= gp->block_size && ofs < gp->size) {   // in the pool (and not in the first meta block)?
+      ssize_t stack_size = gp->block_size - gp->gap_size;
+      ptrdiff_t block_idx = ofs / gp->block_size;
+      ptrdiff_t block_ofs = ofs % gp->block_size;
+      //mp_trace_message("  gp: %p, ofs: %zd, idx: %zd, bofs: %zd, b/g: %zd / %zd\n", gp, ofs, ofs / gp->block_size, block_ofs, gp->block_size, gp->gap_size);
+      if (block_ofs < stack_size) {  // not in a gap?
+        uint8_t* block = (uint8_t*)gp + (block_idx * gp->block_size);
+        uint8_t* base = mp_base(block, stack_size);
+        mp_gstack_t* g;
+        mp_push(base, mp_gstack_initial_reserved(), (uint8_t**)&g);
+        return g;
+      }
+      else {
+        return NULL;  // in a gap
+      }
+    }
+  }
+  return NULL;
+}
+#endif
+
+/*
+// Is a pointer located in a stack page and thus can be made accessible?
+// This routine is called from exception handler thread while debugging on macOS to verify
+// if the address is in one of our stacks and is allowed to be committed.
+static mp_access_t mp_gpools_check_access(void* p, ssize_t* stack_size, ssize_t* available, const mp_gpool_t** gpool) {
+  // for all pools
+  if (available != NULL) *available = 0;
+  if (stack_size != NULL) *stack_size = 0;
+  if (gpool != NULL) *gpool = NULL;
+  for (const mp_gpool_t* gp = mp_gpool_first(); gp != NULL; gp = mp_gpool_next(gp)) {
+    ptrdiff_t ofs = (uint8_t*)p - (uint8_t*)gp;
+    if (ofs >= 0 && ofs < gp->size) {   // in the pool?
+      if (stack_size != NULL) *stack_size = gp->block_size - gp->gap_size;
+      if (ofs <= (ptrdiff_t)sizeof(mp_gpool_t)) {
+        // the start page
+        if (available != NULL) *available = (sizeof(mp_gpool_t) - ofs);
+        if (gpool != NULL) *gpool = gp;
+        return MP_ACCESS_META;
+      }
+      else {
+        ptrdiff_t block_ofs = ofs % gp->block_size;
+        //mp_trace_message("  gp: %p, ofs: %zd, idx: %zd, bofs: %zd, b/g: %zd / %zd\n", gp, ofs, ofs / gp->block_size, block_ofs, gp->block_size, gp->gap_size);
+        if (block_ofs < (gp->block_size - gp->gap_size)) {  // not in a gap?
+          ssize_t avail = (os_stack_grows_down ? block_ofs : gp->block_size - gp->gap_size - block_ofs);
+          if (available != NULL) *available = avail;
+          if (gpool != NULL) *gpool = gp;
+          return (avail == 0 ? MP_NOACCESS_STACK_OVERFLOW : MP_ACCESS);
+        }
+        else {
+          // stack overflow
+          return MP_NOACCESS_STACK_OVERFLOW;
+        }
+      }
+    }
+  }
+  return MP_NOACCESS;
+}
+*/

@@ -114,9 +114,11 @@ static void* mp_mach_exc_thread_start(void* arg) {
       tries = 0;
       //mp_trace_message("mach: received exception port message %i\n", req.code[0]);
       if (req.code[0] == KERN_PROTECTION_FAILURE) {  // == EXC_BAD_ACCESS
-        void* address = (void*)req.code[1];
-        // And call our commit-on-demand handler to reliably provide access if the address is in one of our gstacks
-        if (mp_mmap_commit_on_demand(address,true)) {
+        void* addr = (void*)req.code[1];
+        // Reliably get the gstack that contains this address via the gpools
+        mp_gstack_t* g = mp_gpools_get_gstack_of(addr);
+        // and call the commit-on-demand handler
+        if (g != NULL && mp_mmap_commit_on_demand(addr,g)) {
           //mp_trace_message("  resolved bad acsess at %p\n", address);
           mp_mach_reply(&req, KERN_SUCCESS);  // resolved!
           continue;                           // wait for next request
