@@ -1,7 +1,6 @@
-[<img align="right" src="https://dev.azure.com/Daan0324/libmprompt/_apis/build/status/koka-lang.libmprompt?branchName=main"/>](https://dev.azure.com/Daan0324/libmprompt/_build?definitionId=2)
+[<img style="float:right" align="right" src="https://dev.azure.com/Daan0324/libmprompt/_apis/build/status/koka-lang.libmprompt?branchName=main"/>](https://dev.azure.com/Daan0324/libmprompt/_build?definitionId=2)
 
 # libmprompt
-
 
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
 Latest release: v0.5, 2021-04-07.
