@@ -1,0 +1,118 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+  branches:
+    include:
+    - main
+    - dev    
+  tags:
+    include:
+    - v*
+
+jobs:  
+# - job:
+#   displayName: Windows
+#   pool:
+#     vmImage:
+#       windows-2019
+#   strategy:
+#     matrix:
+#       Debug:
+#         BuildType: debug
+#         cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Debug
+#         MSBuildConfiguration: Debug
+#       Release:
+#         BuildType: release
+#         cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Release
+#         MSBuildConfiguration: Release     
+#   steps:
+#   - task: CMake@1
+#     inputs:
+#       workingDirectory: $(BuildType)
+#       cmakeArgs: .. $(cmakeExtraArgs)
+#   - task: MSBuild@1
+#     inputs:
+#       solution: $(BuildType)/libmprompt.sln
+#       configuration: '$(MSBuildConfiguration)'
+#       msbuildArguments: -m
+#   - script: ctest --verbose --timeout 120
+#     workingDirectory: $(BuildType)
+#     displayName: CTest
+  
+- job:
+  displayName: Linux
+  pool:
+    vmImage:
+     ubuntu-18.04
+  strategy:
+    matrix:
+      Debug:
+        CC: gcc
+        CXX: g++
+        BuildType: debug
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Debug -DMP_USE_C=ON
+      Release:
+        CC: gcc
+        CXX: g++
+        BuildType: release
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Release -DMP_USE_C=ON
+      Debug++:
+        CC: gcc
+        CXX: g++
+        BuildType: debug-cxx
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Debug
+      Release++:
+        CC: gcc
+        CXX: g++
+        BuildType: release
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Release
+      Debug++ Clang:
+        CC: clang
+        CXX: clang++
+        BuildType: debug-clang-cxx
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Debug
+      Release++ Clang:
+        CC: clang
+        CXX: clang++
+        BuildType: release-clang-cxx
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Release
+  steps:
+  - task: CMake@1
+    inputs:
+      workingDirectory: $(BuildType)
+      cmakeArgs: .. $(cmakeExtraArgs)
+  - script: make -j$(nproc) -C $(BuildType)
+    displayName: Make
+  - script: ctest --verbose --timeout 120
+    workingDirectory: $(BuildType)
+    displayName: CTest
+#  - upload: $(Build.SourcesDirectory)/$(BuildType)
+#    artifact: libmprompt-ubuntu-$(BuildType)
+
+- job:
+  displayName: macOS
+  pool:
+    vmImage:
+     macOS-10.14
+  strategy:
+    matrix:
+      Debug++:
+        BuildType: debug
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Debug
+      Release++:
+        BuildType: release
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Release
+      
+  steps:
+  - task: CMake@1
+    inputs:
+      workingDirectory: $(BuildType)
+      cmakeArgs: .. $(cmakeExtraArgs)
+  - script: make -j$(sysctl -n hw.ncpu) -C $(BuildType)
+    displayName: Make  
+  - script: ctest --verbose --timeout 120
+    workingDirectory: $(BuildType)
+    displayName: CTest
