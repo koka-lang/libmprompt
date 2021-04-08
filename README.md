@@ -117,10 +117,10 @@ Some known issues are:
   segmentation fault errors (`SEGV`) which happen when demand paging stack memory; 
   you need to continue through those or set the debugger to ignore them 
   (enter `handle SIGSEGV nostop noprint` in `gdb`).
-  Another workaround is to use overcommit when debugging which does not use
+  Another workaround is to use overcommit on Linux when debugging which does not use
   a signal handler:
   ```C
-  mp_config_t cfg = { }; cfg.stack_use_overcommit = true; mp_init(&cfg); 
+  mp_config_t cfg = mp_config_default(); cfg.stack_use_overcommit = true; mp_init(&cfg); 
   ```
   
 - `lldb`: when debugging on macOS we use an extra thread
