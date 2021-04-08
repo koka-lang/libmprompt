@@ -13,34 +13,34 @@ trigger:
     - v*
 
 jobs:  
-# - job:
-#   displayName: Windows
-#   pool:
-#     vmImage:
-#       windows-2019
-#   strategy:
-#     matrix:
-#       Debug:
-#         BuildType: debug
-#         cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Debug
-#         MSBuildConfiguration: Debug
-#       Release:
-#         BuildType: release
-#         cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Release
-#         MSBuildConfiguration: Release     
-#   steps:
-#   - task: CMake@1
-#     inputs:
-#       workingDirectory: $(BuildType)
-#       cmakeArgs: .. $(cmakeExtraArgs)
-#   - task: MSBuild@1
-#     inputs:
-#       solution: $(BuildType)/libmprompt.sln
-#       configuration: '$(MSBuildConfiguration)'
-#       msbuildArguments: -m
-#   - script: ctest --verbose --timeout 120
-#     workingDirectory: $(BuildType)
-#     displayName: CTest
+- job:
+  displayName: Windows
+  pool:
+    vmImage:
+      windows-2019
+  strategy:
+    matrix:
+      Debug:
+        BuildType: debug
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Debug
+        MSBuildConfiguration: Debug
+      Release:
+        BuildType: release
+        cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Release
+        MSBuildConfiguration: Release     
+  steps:
+  - task: CMake@1
+    inputs:
+      workingDirectory: $(BuildType)
+      cmakeArgs: .. $(cmakeExtraArgs)
+  - task: MSBuild@1
+    inputs:
+      solution: $(BuildType)/libmprompt.sln
+      configuration: '$(MSBuildConfiguration)'
+      msbuildArguments: -m
+  - script: ctest --verbose --timeout 120
+    workingDirectory: $(BuildType)
+    displayName: CTest
   
 - job:
   displayName: Linux

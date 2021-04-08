@@ -49,7 +49,7 @@ static __noinline void* get_stack_top(void) {
   return as_stack_address(&top);
 }
 
-static void stack_use(long totalkb) {
+static void stack_use(intptr_t totalkb) {
   uint8_t* sp = (uint8_t*)get_stack_top();
   size_t page_size = 4096;
   size_t total_pages = ((size_t)totalkb*1024 + page_size - 1) / page_size;
@@ -73,7 +73,7 @@ static void* async_worker(mp_prompt_t* parent, void* arg) {
   // ... do some work
   intptr_t partial_result = 0;
   // and await some request; we do this by yielding up to our prompt and running `await_result` (in the parent context!)
-  long kb =(intptr_t)mp_yield( parent, &await_result, NULL );
+  intptr_t kb =(intptr_t)mp_yield( parent, &await_result, NULL );
   // when we are resumed at some point, we do some more work 
   // ... do more work
   stack_use(kb);
@@ -104,6 +104,6 @@ static void async_workers(void) {
   mpt_show_process_info(stdout, start, start_rss);
   size_t total_kb = M * USE_KB;
   double total_mb = (double)total_kb / 1024.0;
-  printf("Total of %d prompts with %d active at a time\nUsing %dkb stack per request, total stack used: %.3fmb, count=%ld\n", M, N, USE_KB, total_mb, count);
+  printf("Total of %d prompts with %d active at a time\nUsing %dkb stack per request, total stack used: %.3fmb, count=%zd\n", M, N, USE_KB, total_mb, count);
 }
 
