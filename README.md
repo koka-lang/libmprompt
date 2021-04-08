@@ -258,9 +258,8 @@ For example:
 
 In the C implementation, the unique markers `m` are simply
 represented directly by a `mp_prompt_t*`.
-At runtime, yielding to a prompt that is no longer in scope, 
-or to a prompt that is not an ancestor (i.e. not in your
-evaluation context), is an error (e.g. like an unhandled exception).
+At runtime, yielding to a prompt that is not an ancestor (i.e. no
+longer in scope), is an error -- just like an unhandled exception.
 (Effect type systems, like in [Koka], can prevent this situation
 statically at compile-time but in our library this is a runtime error).
 
@@ -450,7 +449,7 @@ See [`mprompt.c`](src/mprompt/mprompt.c) for the implementation of this.
 
 ## An Example
 
-Here is a minimal example of running `N` "async" workers over `M` requests
+Here is an example of running `N` "async" workers over `M` requests
 using resumptions as first-class values stored in the `workers` array:
 
 ```C
