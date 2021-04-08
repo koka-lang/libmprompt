@@ -20,10 +20,10 @@ static void test_cpp_threaded(void);
 int main(int argc, char** argv) {
   printf("testing..\n");
   
-  mp_config_t config = { };
+  mp_config_t config = mp_config_default();
   //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
-  //config.gpool_disable = true;
-  //config.stack_grow_linear = true;
+  //config.gpool_enable = true;
+  //config.stack_grow_fast = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
   //config.stack_initial_commit = 64 * 1024L; 
   //config.stack_cache_count = -1; // disable per-thread cache

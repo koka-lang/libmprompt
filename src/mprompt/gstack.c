@@ -408,7 +408,7 @@ static void mp_gstack_thread_init(void);  // called from `mp_gstack_init`
 
 
 // Init (called by mp_prompt_init and gstack_alloc)
-bool mp_gstack_init(mp_config_t* config) {
+bool mp_gstack_init(const mp_config_t* config) {
   if (os_page_size == 0) 
   {
     // user settings
@@ -420,8 +420,8 @@ bool mp_gstack_init(mp_config_t* config) {
         os_gstack_grow_fast = false;
       }
       else {
-        os_use_gpools = !config->gpool_disable;
-        os_gstack_grow_fast = !config->stack_grow_linear;
+        os_use_gpools = config->gpool_enable;
+        os_gstack_grow_fast = config->stack_grow_fast;
       }
       if (config->gpool_max_size > 0) {
         os_gpool_max_size = mp_align_up(config->gpool_max_size, 64 * MP_KIB);
@@ -464,23 +464,29 @@ bool mp_gstack_init(mp_config_t* config) {
   
   // Thread specific initialization
   mp_gstack_thread_init();
-
-  // Return actual settings
-  if (config != NULL) {
-    config->gpool_disable = !os_use_gpools;
-    config->stack_use_overcommit = os_use_overcommit;
-    config->stack_grow_linear = !os_gstack_grow_fast;
-    config->stack_reset_decommits = os_gstack_reset_decommits;
-    config->gpool_max_size = os_gpool_max_size;
-    config->stack_max_size = os_gstack_size;
-    config->stack_gap_size = os_gstack_gap;
-    config->stack_exn_guaranteed = os_gstack_exn_guaranteed;
-    config->stack_initial_commit = os_gstack_initial_commit;
-    config->stack_cache_count = os_gstack_cache_max_count;
-  }
+ 
   return true;
 }
 
+mp_config_t mp_config_default(void) {
+  mp_config_t cfg;
+  #ifdef _WIN32
+  cfg.gpool_enable = false;
+  cfg.stack_grow_fast = false;
+  #else
+  cfg.gpool_enable = true;
+  cfg.stack_grow_fast = true;
+  #endif
+  cfg.stack_use_overcommit = false;
+  cfg.stack_reset_decommits = false;
+  cfg.gpool_max_size = os_gpool_max_size;
+  cfg.stack_max_size = os_gstack_size;
+  cfg.stack_initial_commit = os_gstack_initial_commit;
+  cfg.stack_exn_guaranteed = os_gstack_exn_guaranteed;
+  cfg.stack_cache_count = os_gstack_cache_max_count;
+  cfg.stack_gap_size = os_gstack_gap;
+  return cfg;
+}
 
 
 static void mp_gstack_thread_done(void) {

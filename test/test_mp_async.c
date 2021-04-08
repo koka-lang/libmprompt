@@ -19,10 +19,10 @@
 static void async_workers(void);
 
 int main() {
-  mp_config_t config = { };
+  mp_config_t config = mp_config_default();
   //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
-  //config.gpool_disable = true;
-  //config.stack_grow_linear = true;
+  //config.gpool_enable = true;
+  //config.stack_grow_fast = true;
   //config.stack_cache_count = -1; // disable per-thread cache
   mp_init(&config);
 

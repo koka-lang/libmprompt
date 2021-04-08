@@ -40,7 +40,7 @@ jobs:
       msbuildArguments: -m
   - script: $(Build.SourcesDirectory)\$(BuildType)\$(MSBuildConfiguration)\test_mpe_main.exe
     displayName: MainTest      
-  - script: ctest --verbose --timeout 120
+  - script: ctest --verbose --timeout 300
     workingDirectory: $(BuildType)
     displayName: CTest
   

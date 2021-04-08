@@ -133,7 +133,7 @@ static mp_resume_t* mp_resume_multi(mp_mresume_t* r) {
 // Initialize
 //-----------------------------------------------------------------------
 
-void mp_init(mp_config_t* config) {
+void mp_init(const mp_config_t* config) {
   mp_gstack_init(config);
 }
 

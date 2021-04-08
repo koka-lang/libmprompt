@@ -65,12 +65,12 @@ mp_decl_export mp_resume_t* mp_resume_dup(mp_resume_t* r);    // only myield res
 #include <stddef.h>
 #include <stdbool.h>
 
-// Configuration settings; any zero/false value uses the default setting.
+// Configuration settings
 typedef struct mp_config_s {
-  bool      gpool_disable;        // disable gpools and allocate per-stack
-  bool      stack_grow_linear;    // grow stacks per-page instead of by doubling (to up to 1MiB at a time)
-  bool      stack_use_overcommit; // use overcommit on systems that support this (Linux only) -- sets gpool_disable and stack_grow_linear
-  bool      stack_reset_decommits;// instead of resetting memory, use a full decommit in instead.
+  bool      gpool_enable;         // enable gpools for in-process reuse of stack memory (besides the thread-local cache)
+  bool      stack_grow_fast;      // grow stacks by doubling (to up to 1MiB at a time) instead of per-page
+  bool      stack_use_overcommit; // use overcommit on systems that support this (Linux only) -- disables gpools and fast stack growing.
+  bool      stack_reset_decommits;// instead of resetting memory in a gpool, use a full decommit in instead.
   ptrdiff_t gpool_max_size;       // maximum virtual size per gpool (256 GiB)
   ptrdiff_t stack_max_size;       // maximum virtual size of a gstack (8 MiB)
   ptrdiff_t stack_exn_guaranteed; // guaranteed extra stack space available during exception unwinding (Windows only) (16 KiB)
@@ -81,10 +81,10 @@ typedef struct mp_config_s {
 
 // Initialize with `config`; use NULL for default settings.
 // Call at most once from the main thread before using any other functions. 
-// Overwrites the `config` with the actual used settings.
 //
-// Use as: `mp_config_t config = { }; config.<setting> = <N>; mp_init(&config);`.
-mp_decl_export void mp_init(mp_config_t* config);
+// Use as: `mp_config_t config = mp_config_default(); config.<setting> = <N>; mp_init(&config);`.
+mp_decl_export void mp_init(const mp_config_t* config);
+mp_decl_export mp_config_t mp_config_default(void);  // default configuration for this platform
 
 
 

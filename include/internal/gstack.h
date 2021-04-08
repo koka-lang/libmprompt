@@ -14,8 +14,8 @@
 typedef struct mp_gstack_s mp_gstack_t;
 typedef struct mp_gsave_s  mp_gsave_t;
 
-bool         mp_gstack_init(mp_config_t* config); // normally called automatically
-void         mp_gstack_clear_cache(void);         // clear thread-local cache of gstacks (called automatically on thread termination)
+bool         mp_gstack_init(const mp_config_t* config); // normally called automatically
+void         mp_gstack_clear_cache(void);               // clear thread-local cache of gstacks (called automatically on thread termination)
 
 mp_gstack_t* mp_gstack_alloc(void); 
 void         mp_gstack_free(mp_gstack_t* gstack, bool delay);
