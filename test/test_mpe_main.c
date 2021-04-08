@@ -13,9 +13,12 @@
 #include <mpeff.h>
 #include "test.h"
 
+static void test_c(void);
+static void test_cpp(void);
+static void test_cpp_threaded(void);
 
 int main(int argc, char** argv) {
-  printf("main\n");
+  printf("testing..\n");
   
   mp_config_t config = { };
   //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
@@ -29,6 +32,15 @@ int main(int argc, char** argv) {
   size_t start_rss = 0;
   mpt_timer_t start = mpt_show_process_info_start(&start_rss);
   
+  test_c();
+  test_cpp();
+  test_cpp_threaded();
+  
+  printf("done.\n");
+  mpt_show_process_info(stdout, start, start_rss);
+}
+
+static void test_c(void) {
   // effect handlers
   reader_run();
   counter_run();
@@ -40,7 +52,36 @@ int main(int argc, char** argv) {
   amb_run();
   amb_state_run();
   nqueens_run();
-  
-  printf("done\n");
-  mpt_show_process_info(stdout, start, start_rss);
 }
+
+
+#ifdef __cplusplus
+
+static void test_cpp(void) {
+  // C++ exception tests  
+  exn_run();
+  multi_unwind_run();
+  throw_run();
+}
+
+
+#include <thread>
+static void thread_test() {
+  printf("\n-----------------------------\nrun tests again in a separate thread:\n\n");
+  test_c();
+  test_cpp();
+  printf("done testing in separate thread.\n");
+}
+void test_cpp_threaded(void) {
+  auto t = std::thread(&thread_test);
+  t.join();  
+}
+
+#else // C
+static void test_cpp(void) {
+  // nothing
+}
+static void test_cpp_threaded(void) {
+  // nothing
+}
+#endif  

@@ -26,19 +26,15 @@ set(test_mpe_main_sources
     test/src/mstate.c
     test/src/amb.c
     test/src/amb_state.c
-    test/src/nqueens.c)    
+    test/src/nqueens.c
+    test/src/rehandle.c
+    test/test_mpe_main.c)    
 
-if (MP_USE_C)
-list(APPEND test_mpe_main_sources 
-    test/src/rehandle.c 
-    test/test_mpe_main.c)
-else()
+if (NOT MP_USE_C)
 list(APPEND test_mpe_main_sources
     test/src/exn.cpp
     test/src/multi_unwind.cpp
-    test/src/throw.cpp
-    test/src/rehandlex.cpp
-    test/test_mpe_mainx.cpp)  
+    test/src/throw.cpp)
 endif()
 
 set(test_mp_async_sources 
