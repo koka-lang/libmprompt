@@ -12,6 +12,7 @@ void mpt_assert_at(bool condition, const char* msg, const char* fname, int line)
   if (condition) return;
   fprintf(stderr,"\n-----------------------------------\nTEST FAILED: %s:%d: %s\n-----------------------------------\n\n", 
                  fname, line, msg );
+  exit(1);                 
 }
 
 void mpt_timer_print(mpt_timer_t start) {

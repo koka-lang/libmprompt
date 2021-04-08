@@ -188,21 +188,3 @@ static void test(void) {
 void rehandle_run(void) {
   test();
 }
-
-#if __cplusplus
-#include <thread>
-
-static void thread_rehandle() {
-  printf("\n-----------------------------\nrunning in separate thread\n");
-  reader_run();
-  throw_run();
-  amb_state_run();
-  rehandle_run();
-  printf("done separate thread\n-----------------------------\n");
-}
-
-void thread_rehandle_run(void) {
-  auto t = std::thread(&thread_rehandle);
-  t.join();  
-}
-#endif
