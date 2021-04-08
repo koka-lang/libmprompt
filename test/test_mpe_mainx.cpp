@@ -25,14 +25,13 @@ int main(int argc, char** argv) {
 
   size_t start_rss = 0;
   mpt_timer_t start = mpt_show_process_info_start(&start_rss);
-
   
-  // C++ 
+  // C++ tests
   exn_run();
   multi_unwind_run();
   throw_run();
   
-  // threaded test (C++ only)
+  // threaded test 
   thread_rehandle_run();
     
   printf("done\n");

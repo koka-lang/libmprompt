@@ -18,7 +18,7 @@ set(mpeff_sources    src/mpeff/main.c)
     # src/mpeff/mpeff.c
 
 set(test_mpe_main_sources
-    test/util.c
+    test/common_util.c
     test/common_effects.c
     test/src/reader.c
     test/src/counter.c
@@ -34,7 +34,7 @@ if (MP_USE_C)
 set(test_mpe_mainx_sources)
 else()
 set(test_mpe_mainx_sources
-    test/util.c
+    test/common_util.c
     test/common_effects.c
     test/src/exn.cpp
     test/src/multi_unwind.cpp
@@ -43,11 +43,19 @@ set(test_mpe_mainx_sources
     test/test_mpe_mainx.cpp)  
 endif()
 
+set(test_mp_async_sources 
+    test/test_mp_async.c
+    test/common_util.c)
+
 set(test_mp_async_example_sources 
     test/test_mp_async_example.c)
 
 
-list(APPEND test_sources ${test_mpe_main_sources} ${test_mpe_mainx_sources} ${test_mp_async_example_sources})
+list(APPEND test_sources 
+      ${test_mpe_main_sources} 
+      ${test_mpe_mainx_sources} 
+      ${test_mp_async_sources} 
+      ${test_mp_async_example_sources})
 
 set(mp_cflags)
 set(mp_install_dir)
@@ -201,9 +209,10 @@ endif()
 # tests
 #---------------------------------------------------------------
 add_executable(test_mpe_main          ${test_mpe_main_sources})
+add_executable(test_mp_async          ${test_mp_async_sources})
 add_executable(test_mp_async_example  ${test_mp_async_example_sources})
 
-set(test_targets test_mpe_main test_mp_async_example)
+set(test_targets test_mpe_main test_mp_async test_mp_async_example)
 
 # C++ tests
 if (NOT MP_USE_C)

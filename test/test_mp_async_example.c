@@ -28,7 +28,7 @@ static void* async_worker(mp_prompt_t* parent, void* arg) {
 static void async_workers(void) {
   mp_resume_t** workers = (mp_resume_t**)calloc(N,sizeof(mp_resume_t*));  // allocate array of N resumptions
   intptr_t count = 0;
-  for( int i = 0; i < M; i++) {  // perform M connections
+  for( int i = 0; i < M+N; i++) {  // perform M connections
     int j = i % N;               // pick an active worker
     // if the worker is actively waiting (suspended), resume it
     if (workers[j] != NULL) {  
@@ -37,7 +37,7 @@ static void async_workers(void) {
     }
     // and start a fresh worker and wait for its first yield (suspension). 
     // the worker returns its own resumption as a result.
-    if (i < (M - N)) {
+    if (i < M) {
       workers[j] = (mp_resume_t*)mp_prompt( &async_worker, NULL );  // (A)
     }
   }
