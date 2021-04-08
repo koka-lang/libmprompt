@@ -26,12 +26,12 @@ int main(int argc, char** argv) {
   printf("main\n");
   
   mp_config_t config = { };
-  config.stack_use_overcommit = true;
+  //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
   //config.gpool_disable = true;
   //config.stack_grow_linear = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
   //config.stack_initial_commit = 64 * 1024L; 
-  //config.stack_cache_count = -1;
+  //config.stack_cache_count = -1; // disable per-thread cache
   mp_init(&config);
 
   size_t start_rss = 0;

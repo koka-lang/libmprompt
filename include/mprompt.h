@@ -6,7 +6,7 @@
 -----------------------------------------------------------------------------*/
 #pragma once
 #ifndef MP_MPROMPT_H
-#define MP_MPROMPT_H
+#define MP_MPROMPT_H 
 
 //------------------------------------------------------
 // Compiler specific attributes
@@ -108,7 +108,5 @@ mp_decl_export void* mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* 
 mp_decl_export mp_prompt_t* mp_prompt_top(void);
 mp_decl_export mp_prompt_t* mp_prompt_parent(mp_prompt_t* p);
 
-
-//void* win_test(mp_prompt_t* p, void* arg);
 
 #endif
