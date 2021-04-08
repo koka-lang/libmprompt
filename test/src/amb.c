@@ -25,9 +25,8 @@ static void* bench_xor(void* arg) {
 /*-----------------------------------------------------------------
   Bench
 -----------------------------------------------------------------*/
-
 static void print_bool(void* arg) {
-  mpt_printf("%s", mpe_bool_voidp(arg) ? "true" : "false" );
+  mpt_printf("%s", mpe_bool_voidp(arg) ? "true" : "false");
 }
 
 static void test() {

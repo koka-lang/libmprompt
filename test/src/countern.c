@@ -64,7 +64,7 @@ static void* bench_reader10(void* arg) {
 static void test(long count) {
   long res = 0;
   /*mpt_bench{ res = mpe_long_voidp(state_handle(&bench_reader1,count,NULL)); }
-  printf("counter1  : %ld\n", res);
+  mpt_printf("counter1  : %ld\n", res);
   mpt_assert(res == count, "counter1");*/
 
   mpt_bench{ res = mpe_long_voidp(ostate_handle(&bench_reader1,count,NULL)); }

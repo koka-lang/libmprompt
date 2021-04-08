@@ -77,13 +77,13 @@ static void print_backtrace(const char* msg) {
     unw_word_t ofs;
     unw_get_proc_name(&cursor, name, 128, &ofs);
     
-    printf ("frame %2d: %8p: %s at offset %ld\n", i, (void*)ip, name, (long)ofs);
+    mpt_printf ("frame %2d: %8p: %s at offset %ld\n", i, (void*)ip, name, (long)ofs);
     i++;
     if (false) { //strcmp(name,"mp_stack_enter") == 0) {
       unw_proc_info_t pinfo;
       unw_get_proc_info(&cursor,&pinfo);
       bool sig = unw_is_signal_frame(&cursor);
-      printf("signal: %i\n", sig);
+      mpt_printf("signal: %i\n", sig);
     }
   }
   fprintf(stderr,"\n");
