@@ -31,7 +31,7 @@ set(test_mpe_main_sources
 if (MP_USE_C)
 list(APPEND test_mpe_main_sources 
     test/src/rehandle.c 
-    test/src/test_mpe_main.c)
+    test/test_mpe_main.c)
 else()
 list(APPEND test_mpe_main_sources
     test/src/exn.cpp
