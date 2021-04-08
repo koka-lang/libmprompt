@@ -33,9 +33,9 @@
     <ClCompile Include="..\..\test\src\multi_unwind.cpp" />
     <ClCompile Include="..\..\test\src\nqueens.c" />
     <ClCompile Include="..\..\test\src\reader.c" />
-    <ClCompile Include="..\..\test\src\rehandlex.cpp" />
+    <ClCompile Include="..\..\test\src\rehandle.c" />
     <ClCompile Include="..\..\test\src\throw.cpp" />
-    <ClCompile Include="..\..\test\test_mpe_mainx.cpp" />
+    <ClCompile Include="..\..\test\test_mpe_main.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

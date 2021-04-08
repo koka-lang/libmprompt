@@ -49,13 +49,13 @@
     <ClCompile Include="..\..\test\src\reader.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\test\src\rehandlex.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\test\src\throw.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\test\test_mpe_mainx.cpp">
+    <ClCompile Include="..\..\test\test_mpe_main.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\test\src\rehandle.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
