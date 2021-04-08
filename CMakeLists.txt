@@ -17,7 +17,7 @@ set(mprompt_sources  src/mprompt/main.c)
 set(mpeff_sources    src/mpeff/main.c)
     # src/mpeff/mpeff.c
 
-set(test_main_sources
+set(test_mpe_main_sources
     test/util.c
     test/common_effects.c
     test/src/reader.c
@@ -28,26 +28,26 @@ set(test_main_sources
     test/src/amb_state.c
     test/src/nqueens.c
     test/src/rehandle.c
-    test/test_main.c)    
+    test/test_mpe_main.c)    
 
 if (MP_USE_C)
-set(test_mainx_sources)
+set(test_mpe_mainx_sources)
 else()
-set(test_mainx_sources
+set(test_mpe_mainx_sources
     test/util.c
     test/common_effects.c
     test/src/exn.cpp
     test/src/multi_unwind.cpp
     test/src/rehandlex.cpp test/src/reader.c test/src/amb_state.c
     test/src/throw.cpp
-    test/test_mainx.cpp)  
+    test/test_mpe_mainx.cpp)  
 endif()
 
-set(test_async_sources 
-    test/test_async.c)
+set(test_mp_async_example_sources 
+    test/test_mp_async_example.c)
 
 
-list(APPEND test_sources ${test_main_sources} ${test_mainx_sources} ${test_async_sources})
+list(APPEND test_sources ${test_mpe_main_sources} ${test_mpe_mainx_sources} ${test_mp_async_example_sources})
 
 set(mp_cflags)
 set(mp_install_dir)
@@ -130,7 +130,8 @@ if((CMAKE_BUILD_TYPE MATCHES "Release") OR ((CMAKE_BUILD_TYPE MATCHES "RelWithDe
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 endif()
 
-if(CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU")
+set(GNULIKE $<OR:$<C_COMPILER_ID:AppleClang>,$<C_COMPILER_ID:Clang>,$<C_COMPILER_ID:GNU>,$<C_COMPILER_ID:Intel>>)
+if($GNULIKE)
   list(APPEND mp_cflags -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
 endif()
 
@@ -195,22 +196,25 @@ if (NOT WIN32)
 endif()
 
 
-# tests
-add_executable(test_main  ${test_main_sources})
-add_executable(test_async ${test_async_sources})
 
-set(test_targets test_main test_async)
+#---------------------------------------------------------------
+# tests
+#---------------------------------------------------------------
+add_executable(test_mpe_main          ${test_mpe_main_sources})
+add_executable(test_mp_async_example  ${test_mp_async_example_sources})
+
+set(test_targets test_mpe_main test_mp_async_example)
 
 # C++ tests
 if (NOT MP_USE_C)
-add_executable(test_mainx ${test_mainx_sources})
-list(APPEND test_targets test_mainx)
+add_executable(test_mpe_mainx ${test_mpe_mainx_sources})
+list(APPEND test_targets test_mpe_mainx)
 endif()
 
 # finalize tests
 enable_testing()
 foreach(test_target ${test_targets} )
-  target_compile_options(${test_target} PRIVATE ${mp_cflags} -Wno-extra)
+  target_compile_options(${test_target} PRIVATE ${mp_cflags} $<${GNULIKE}:-Wno-extra>)
   target_include_directories(${test_target} PRIVATE include test)
   target_link_libraries(${test_target} PRIVATE mpeff)
   add_test( ${test_target} ${test_target})
