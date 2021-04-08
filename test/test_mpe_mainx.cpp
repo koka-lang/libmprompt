@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
   
   mp_config_t config = { };
   #if defined(_MSC_VER)
-  config.stack_use_overcommit = true;   
+  config.stack_use_overcommit = true;    // don't use gpools or a page-fault handler
   #endif
   //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
   //config.gpool_disable = true;
