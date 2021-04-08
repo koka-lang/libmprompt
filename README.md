@@ -1,4 +1,4 @@
-[<img align="right" src="https://dev.azure.com/Daan0324/libmprompt/_apis/build/status/koka-lang.libmprompt?branchName=main"/>](https://dev.azure.com/Daan0324/libmprompt/_build?definitionId=1&_a=summary)
+[<img align="right" src="https://dev.azure.com/Daan0324/libmprompt/_apis/build/status/koka-lang.libmprompt?branchName=main"/>](https://dev.azure.com/Daan0324/libmprompt/_build?definitionId=2)
 
 # libmprompt
 
