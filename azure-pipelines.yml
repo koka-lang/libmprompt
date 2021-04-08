@@ -38,7 +38,7 @@ jobs:
       solution: $(BuildType)/libmprompt.sln
       configuration: '$(MSBuildConfiguration)'
       msbuildArguments: -m
-  - script: $(Build.SourcesDirectory)\$(BuildType)\test_mpe_main.exe
+  - script: $(MSBuildConfiguration)\test_mpe_main.exe
     displayName: MainTest      
   - script: ctest --verbose --timeout 120
     workingDirectory: $(BuildType)
