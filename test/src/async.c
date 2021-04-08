@@ -5,7 +5,7 @@
 // or where a strand can "sleep" for a while (ie. a blocking operation)
 
 // Types
-typedef void (*mpt_void_fun_t)(void) 
+typedef void (*mpt_void_fun_t)(void);
 #define mpe_voidp_mpt_void_fun_t(v)   ((void*)(v))
 
 // A list of actions to schedule

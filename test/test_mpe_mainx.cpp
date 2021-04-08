@@ -28,6 +28,19 @@ int main(int argc, char** argv) {
   size_t start_rss = 0;
   mpt_timer_t start = mpt_show_process_info_start(&start_rss);
   
+   
+  // effect handlers
+  reader_run();
+  counter_run();
+  countern_run();
+  mstate_run();
+  rehandle_run();
+
+  // multi-shot tests
+  amb_run();
+  amb_state_run();
+  nqueens_run();
+  
   // C++ tests
   exn_run();
   multi_unwind_run();

@@ -11,22 +11,6 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\test\effects.c" />
-    <ClCompile Include="..\..\test\main.c" />
-    <ClCompile Include="..\..\test\test-amb-state.c" />
-    <ClCompile Include="..\..\test\test-amb.c" />
-    <ClCompile Include="..\..\test\test-counter.c" />
-    <ClCompile Include="..\..\test\test-countern.c" />
-    <ClCompile Include="..\..\test\test-exn.cpp" />
-    <ClCompile Include="..\..\test\test-multi-unwind.cpp" />
-    <ClCompile Include="..\..\test\test-rehandle.c" />
-    <ClCompile Include="..\..\test\test-throw.cpp" />
-    <ClCompile Include="..\..\test\test-mstate.c" />
-    <ClCompile Include="..\..\test\test-nqueens.c" />
-    <ClCompile Include="..\..\test\test-reader.c" />
-    <ClCompile Include="..\..\test\util.c" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="..\..\test\test.h" />
   </ItemGroup>
   <ItemGroup>
@@ -36,6 +20,22 @@
     <ProjectReference Include="libmpromptx.vcxproj">
       <Project>{aff5a4c1-5f72-47d4-92e7-92c052fc58c5}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\test\common_effects.c" />
+    <ClCompile Include="..\..\test\common_util.c" />
+    <ClCompile Include="..\..\test\src\amb.c" />
+    <ClCompile Include="..\..\test\src\amb_state.c" />
+    <ClCompile Include="..\..\test\src\counter.c" />
+    <ClCompile Include="..\..\test\src\countern.c" />
+    <ClCompile Include="..\..\test\src\exn.cpp" />
+    <ClCompile Include="..\..\test\src\mstate.c" />
+    <ClCompile Include="..\..\test\src\multi_unwind.cpp" />
+    <ClCompile Include="..\..\test\src\nqueens.c" />
+    <ClCompile Include="..\..\test\src\reader.c" />
+    <ClCompile Include="..\..\test\src\rehandlex.cpp" />
+    <ClCompile Include="..\..\test\src\throw.cpp" />
+    <ClCompile Include="..\..\test\test_mpe_mainx.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -85,7 +85,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\..\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\include;..\..\test</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
@@ -102,7 +102,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\..\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\include;..\..\test</AdditionalIncludeDirectories>
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
     <Link>

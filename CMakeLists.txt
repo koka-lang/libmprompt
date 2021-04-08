@@ -26,20 +26,18 @@ set(test_mpe_main_sources
     test/src/mstate.c
     test/src/amb.c
     test/src/amb_state.c
-    test/src/nqueens.c
-    test/src/rehandle.c
-    test/test_mpe_main.c)    
+    test/src/nqueens.c)    
 
 if (MP_USE_C)
-set(test_mpe_mainx_sources)
+list(APPEND test_mpe_main_sources 
+    test/src/rehandle.c 
+    test/src/test_mpe_main.c)
 else()
-set(test_mpe_mainx_sources
-    test/common_util.c
-    test/common_effects.c
+list(APPEND test_mpe_main_sources
     test/src/exn.cpp
     test/src/multi_unwind.cpp
-    test/src/rehandlex.cpp test/src/reader.c test/src/amb_state.c
     test/src/throw.cpp
+    test/src/rehandlex.cpp
     test/test_mpe_mainx.cpp)  
 endif()
 
@@ -55,8 +53,7 @@ set(test_mp_example_async_sources
 
 
 list(APPEND test_sources 
-      ${test_mpe_main_sources} 
-      ${test_mpe_mainx_sources} 
+      ${test_mpe_main_sources}  
       ${test_mp_async_sources} 
       ${test_mp_example_generator_sources}
       ${test_mp_example_async_sources})
@@ -219,11 +216,6 @@ add_executable(test_mp_example_async      ${test_mp_example_async_sources})
 
 set(test_targets test_mpe_main test_mp_async test_mp_example_generator test_mp_example_async)
 
-# C++ tests
-if (NOT MP_USE_C)
-add_executable(test_mpe_mainx ${test_mpe_mainx_sources})
-list(APPEND test_targets test_mpe_mainx)
-endif()
 
 # finalize tests
 enable_testing()
