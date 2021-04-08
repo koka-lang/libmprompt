@@ -1,3 +1,11 @@
+/* ----------------------------------------------------------------------------
+  Copyright (c) 2021, Microsoft Research, Daan Leijen
+  This is free software; you can redistribute it and/or modify it
+  under the terms of the MIT License. A copy of the license can be
+  found in the "LICENSE" file at the root of this distribution.
+
+  Example for the low-level mprompt API with async workers
+-----------------------------------------------------------------------------*/
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>

@@ -47,15 +47,19 @@ set(test_mp_async_sources
     test/test_mp_async.c
     test/common_util.c)
 
-set(test_mp_async_example_sources 
-    test/test_mp_async_example.c)
+set(test_mp_example_generator_sources 
+    test/test_mp_example_generator.c)
+
+set(test_mp_example_async_sources 
+    test/test_mp_example_async.c)
 
 
 list(APPEND test_sources 
       ${test_mpe_main_sources} 
       ${test_mpe_mainx_sources} 
       ${test_mp_async_sources} 
-      ${test_mp_async_example_sources})
+      ${test_mp_example_generator_sources}
+      ${test_mp_example_async_sources})
 
 set(mp_cflags)
 set(mp_install_dir)
@@ -208,11 +212,12 @@ endif()
 #---------------------------------------------------------------
 # tests
 #---------------------------------------------------------------
-add_executable(test_mpe_main          ${test_mpe_main_sources})
-add_executable(test_mp_async          ${test_mp_async_sources})
-add_executable(test_mp_async_example  ${test_mp_async_example_sources})
+add_executable(test_mpe_main              ${test_mpe_main_sources})
+add_executable(test_mp_async              ${test_mp_async_sources})
+add_executable(test_mp_example_generator  ${test_mp_example_generator_sources})
+add_executable(test_mp_example_async      ${test_mp_example_async_sources})
 
-set(test_targets test_mpe_main test_mp_async test_mp_async_example)
+set(test_targets test_mpe_main test_mp_async test_mp_example_generator test_mp_example_async)
 
 # C++ tests
 if (NOT MP_USE_C)
