@@ -27,13 +27,13 @@ static void* bench_xor(void* arg) {
 -----------------------------------------------------------------*/
 
 static void print_bool(void* arg) {
-  printf("%s", mpe_bool_voidp(arg) ? "true" : "false" );
+  mpt_printf("%s", mpe_bool_voidp(arg) ? "true" : "false" );
 }
 
 static void test() {
   blist xs = NULL;
   mpt_bench{ xs = mpe_blist_voidp(amb_handle(&bench_xor, NULL)); }
-  printf("amb:      : "); blist_println(xs, &print_bool); 
+  mpt_printf("amb:      : "); blist_println(xs, &print_bool); 
   mpt_assert(blist_length(xs)==4, "ambxor");
   blist_free(xs);  
 }

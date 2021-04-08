@@ -60,7 +60,7 @@ void* multi_handle(mpe_actionfun_t* action, void* arg) {
 static void test(void) {
   long res = 0; 
   mpt_bench{ res = mpe_long_voidp(multi_handle(&bench_main,NULL)); }
-  printf("test-multi-unwind  : %ld\n", res);
+  mpt_printf("test-multi-unwind  : %ld\n", res);
   mpt_assert(res == 42 && d3_destructed, "test-multi-unwind");  
 }
 

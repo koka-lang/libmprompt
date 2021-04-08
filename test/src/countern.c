@@ -68,15 +68,15 @@ static void test(long count) {
   mpt_assert(res == count, "counter1");*/
 
   mpt_bench{ res = mpe_long_voidp(ostate_handle(&bench_reader1,count,NULL)); }
-  printf("ocounter1 : %ld\n", res);
+  mpt_printf("ocounter1 : %ld\n", res);
   mpt_assert(res == count, "ocounter1");
 
   mpt_bench{ res = mpe_long_voidp(state_handle(&bench_reader10,count,NULL)); }  
-  printf("counter10 : %ld\n", res);
+  mpt_printf("counter10 : %ld\n", res);
   mpt_assert(res == count, "counter10");
   
   mpt_bench{ res = mpe_long_voidp(ostate_handle(&bench_reader10,count,NULL)); }
-  printf("ocounter10: %ld\n", res);
+  mpt_printf("ocounter10: %ld\n", res);
   mpt_assert(res == count, "ocounter10");
 }
 

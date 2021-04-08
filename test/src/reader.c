@@ -34,10 +34,10 @@ void reader_run(void) {
   long init = 42;
   long res = 0;
   mpt_bench{ res = mpe_long_voidp(reader_handle(reader_action, init, NULL)); }
-  printf("reader    : %ld\n", res);
+  mpt_printf("reader    : %ld\n", res);
   mpt_assert(res == 2*init, "reader");
   mpt_bench{ res = mpe_long_voidp(greader_handle(reader_action, init, NULL)); }
-  printf("greader   : %ld\n", res);
+  mpt_printf("greader   : %ld\n", res);
   mpt_assert(res == 2*init, "greader");
 }
 

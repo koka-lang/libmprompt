@@ -45,7 +45,7 @@ static void test(int n, int expect) {
     xss = mpe_blist_voidp(choice_handle(&bench_nqueens, mpe_voidp_int(n)));
   }
   int len = blist_length(xss);
-  printf("nqueens %2d: %d\n", n, len);
+  mpt_printf("nqueens %2d: %d\n", n, len);
   mpt_assert(expect == len, "nqueens");
 }
 

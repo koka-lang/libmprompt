@@ -181,7 +181,7 @@ static void test(void) {
     void* r = reader_handle(&with_exit_handle, 1, NULL);        // reader returns 1  -- final return is a resumption from with_exit_handle
     res = mpe_long_voidp(reader_handle(&with_resume, 2, r));    // new reader returns 2 -- this resumes the resumption under a new reader
   }
-  printf("rehandle  : %ld\n", res);
+  mpt_printf("rehandle  : %ld\n", res);
   mpt_assert(res == 3, "test-rehandle");
 }
 

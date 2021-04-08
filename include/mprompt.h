@@ -81,9 +81,8 @@ typedef struct mp_config_s {
 
 // Initialize with `config`; use NULL for default settings.
 // Call at most once from the main thread before using any other functions. 
-//
 // Use as: `mp_config_t config = mp_config_default(); config.<setting> = <N>; mp_init(&config);`.
-mp_decl_export void mp_init(const mp_config_t* config);
+mp_decl_export void        mp_init(const mp_config_t* config);
 mp_decl_export mp_config_t mp_config_default(void);  // default configuration for this platform
 
 

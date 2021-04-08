@@ -41,7 +41,7 @@ static void* bench_state(void* arg) {
 static void test(void) {
   long res = 0; 
   mpt_bench{ res = mpe_long_voidp(exn_handle(&bench_state,NULL)); }
-  printf("test-exn  : %ld\n", res);
+  mpt_printf("test-exn  : %ld\n", res);
   mpt_assert(res == 0 && d1_destructed && d2_destructed, "test-exn");  
 }
 

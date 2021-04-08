@@ -21,6 +21,8 @@
 
 void mpt_assert_at(bool condition, const char* msg, const char* fname, int line);
 
+#define mpt_printf(...)  fprintf(stderr, __VA_ARGS__)   // so it shows up in an azure pipeline
+
 /*-----------------------------------------------------------------
   Tests
 -----------------------------------------------------------------*/
@@ -56,11 +58,11 @@ private:
   bool* destructed;
 public:
   test_raii_t(const char* s, bool* is_destructed) : msg(s), destructed(is_destructed) {
-    fprintf(stderr, "construct: %s\n", msg);
+    mpt_printf("construct: %s\n", msg);
     if (destructed != NULL) *destructed = false;
   }
   ~test_raii_t() {
-    fprintf(stderr, "destruct: %s\n", msg);
+    mpt_printf("destruct: %s\n", msg);
     if (destructed != NULL) *destructed = true;
   }
 };
@@ -191,12 +193,12 @@ static inline long blist_length(blist xs) {
 }
 
 static inline void blist_println(blist xs, void (*print_elem)(void*)) {
-  printf("[");
+  mpt_printf("[");
   while (xs != NULL) {
     print_elem(xs->value);
     xs = xs->next;
-    if (xs != NULL) printf(",");
+    if (xs != NULL) mpt_printf(",");
   }
-  printf("]\n");
+  mpt_printf("]\n");
 }
 

@@ -37,11 +37,11 @@ static void test(long count) {
   long res = 0;
   try {
     mpt_bench{ res = mpe_long_voidp(state_handle(&bench_reader,count,NULL)); }
-    printf("test-throw : %ld\n", res);
+    mpt_printf("test-throw : %ld\n", res);
     mpt_assert(res == count, "test-throw");
   }
   catch (const std::exception& e) {
-    printf("exception caught: %s\n", e.what());
+    mpt_printf("exception caught: %s\n", e.what());
   }
 }
 

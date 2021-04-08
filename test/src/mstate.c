@@ -130,7 +130,7 @@ static void test(long count) {
   mpt_bench{
     res = mpe_int_voidp(mstate_handle(&bench_counter, count, NULL));
   }
-  printf("mstate    : %ld\n", res);
+  mpt_printf("mstate    : %ld\n", res);
   mpt_assert(res == count, "mstate");
 }
 

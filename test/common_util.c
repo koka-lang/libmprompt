@@ -17,7 +17,7 @@ void mpt_assert_at(bool condition, const char* msg, const char* fname, int line)
 
 void mpt_timer_print(mpt_timer_t start) {
   mpt_usecs_t t = mpt_timer_end(start);
-  printf("%2ld.%03lds: ", (long)(t / 1000000), (long)((t % 1000000) / 1000));
+  fprintf(stderr,"%2ld.%03lds: ", (long)(t / 1000000), (long)((t % 1000000) / 1000));
 }
 
 // ----------------------------------------------------------------

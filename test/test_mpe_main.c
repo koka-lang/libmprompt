@@ -18,12 +18,12 @@ static void test_cpp(void);
 static void test_cpp_threaded(void);
 
 int main(int argc, char** argv) {
-  printf("testing..\n");
+  mpt_printf("testing..\n");
   
   mp_config_t config = mp_config_default();
   //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
-  config.gpool_enable = true;
-  config.stack_grow_fast = true;
+  //config.gpool_enable = true;
+  //config.stack_grow_fast = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
   //config.stack_initial_commit = 64 * 1024L; 
   //config.stack_cache_count = 0; // disable per-thread cache
@@ -36,8 +36,8 @@ int main(int argc, char** argv) {
   test_cpp();
   test_cpp_threaded();
   
-  printf("done.\n");
-  mpt_show_process_info(stdout, start, start_rss);
+  mpt_printf("done.\n");
+  mpt_show_process_info(stderr, start, start_rss);
 }
 
 static void test_c(void) {
@@ -67,10 +67,10 @@ static void test_cpp(void) {
 
 #include <thread>
 static void thread_test() {
-  printf("\n-----------------------------\nrun tests again in a separate thread:\n\n");
+  mpt_printf("\n-----------------------------\nrun tests again in a separate thread:\n\n");
   test_c();
   test_cpp();
-  printf("done testing in separate thread.\n");
+  mpt_printf("done testing in separate thread.\n");
 }
 void test_cpp_threaded(void) {
   auto t = std::thread(&thread_test);

@@ -31,19 +31,19 @@ static void* bench_counter(void* arg) {
 static void test(long count) {
   long res = 0;
   mpt_bench{ res = mpe_long_voidp(state_handle(&bench_counter,count,NULL)); }
-  printf("counter   : %ld\n", res);
+  mpt_printf("counter   : %ld\n", res);
   mpt_assert(res == count, "counter");
 
   mpt_bench{ res = mpe_long_voidp(ustate_handle(&bench_counter, count, NULL)); }
-  printf("ucounter  : %ld\n", res);
+  mpt_printf("ucounter  : %ld\n", res);
   mpt_assert(res == count, "ucounter");
   
   mpt_bench{ res = mpe_long_voidp(ostate_handle(&bench_counter, count, NULL)); }
-  printf("ocounter  : %ld\n", res);
+  mpt_printf("ocounter  : %ld\n", res);
   mpt_assert(res == count, "ocounter");
 
   mpt_bench{ res = mpe_long_voidp(gstate_handle(&bench_counter, count/10, NULL)); }  
-  printf("gcounter  : %ld\n", res);
+  mpt_printf("gcounter  : %ld\n", res);
   mpt_assert(res == count/10, "gcounter");
 }
 

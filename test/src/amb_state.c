@@ -59,12 +59,12 @@ static blist state_amb(void) {
 static void test() {
   blist xs = NULL;
   mpt_bench{ xs = amb_state(); }
-  printf("amb-state : "); blist_println(xs, &print_bool); 
+  mpt_printf("amb-state : "); blist_println(xs, &print_bool); 
   mpt_assert(blist_length(xs)==2, "amb-state");
   blist_free(xs);
 
   mpt_bench{ xs = state_amb(); }
-  printf("state-amb : "); blist_println(xs, &print_bool);
+  mpt_printf("state-amb : "); blist_println(xs, &print_bool);
   mpt_assert(blist_length(xs) == 5, "state-amb");
   blist_free(xs);
 }
