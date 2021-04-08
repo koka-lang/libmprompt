@@ -19,7 +19,7 @@ set(mpeff_sources    src/mpeff/main.c)
 
 set(test_sources
     test/util.c
-    test/effects.c
+    test/common_effects.c
     test/src/reader.c
     test/src/counter.c
     test/src/countern.c
@@ -184,7 +184,7 @@ endif()
 # tests
 add_executable(mptest ${test_sources})
 target_compile_options(mptest PRIVATE ${mp_cflags})
-target_include_directories(mptest PRIVATE include)
+target_include_directories(mptest PRIVATE include test)
 target_link_libraries(mptest PRIVATE mpeff)
 
 enable_testing()
