@@ -17,6 +17,9 @@ int main(int argc, char** argv) {
   printf("main\n");
   
   mp_config_t config = { };
+  #if defined(_MSC_VER)
+  config.stack_use_overcommit = true;   
+  #endif
   //config.stack_use_overcommit = true;  // easier debugging in gdb/lldb as no SEGV signals are used
   //config.gpool_disable = true;
   //config.stack_grow_linear = true;
@@ -40,7 +43,7 @@ int main(int argc, char** argv) {
   amb_run();
   amb_state_run();
   nqueens_run();
-  
+
   // C++ tests
   exn_run();
   multi_unwind_run();
