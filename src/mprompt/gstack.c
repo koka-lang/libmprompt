@@ -46,7 +46,7 @@ struct mp_gstack_s {
 
 // Static configuration; should be set once at startup.
 // Todo: make this easier to change by reading environment variables?
-static bool    os_use_gpools              = false;         // reuse gstacks in-process
+static bool    os_use_gpools              = true;          // reuse gstacks in-process
 static bool    os_use_overcommit          = false;         // commit on demand by relying on overcommit? (only if available)
 static bool    os_stack_grows_down        = true;          // on almost all systems
 static ssize_t os_page_size               = 0;             // initialized at startup
@@ -55,7 +55,7 @@ static ssize_t os_gstack_initial_commit   = 0;             // initial commit siz
 static ssize_t os_gstack_size             = 8 * MP_MIB;    // reserved memory for a stack (including the gaps)
 static ssize_t os_gstack_gap              = 64 * MP_KIB;   // noaccess gap between stacks; `os_gstack_gap > min(64*1024, os_page_size, os_gstack_size/2`.
 static bool    os_gstack_reset_decommits  = false;         // force full decommit when resetting a stack?
-static bool    os_gstack_grow_fast        = false;         // use doubling to grow gstacks (up to 1MiB)
+static bool    os_gstack_grow_fast        = true;          // use doubling to grow gstacks (up to 1MiB)
 static ssize_t os_gstack_cache_max_count  = 4;             // number of prompts to keep in the thread local cache
 static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
 
@@ -412,15 +412,22 @@ bool mp_gstack_init(mp_config_t* config) {
   if (os_page_size == 0) 
   {
     // user settings
-    if (config != NULL) {
-      if (config->stack_max_size > 0) {
-        os_gstack_size = mp_align_up(config->stack_max_size, 4 * MP_KIB);
+    if (config != NULL) {      
+      os_gstack_reset_decommits = config->stack_reset_decommits;
+      os_use_overcommit = config->stack_use_overcommit;      
+      if (os_use_overcommit) {
+        os_use_gpools = false;
+        os_gstack_grow_fast = false;
       }
-      os_use_gpools = config->gpool_enable;
-      os_use_overcommit = config->stack_overcommit;
-      os_gstack_grow_fast = config->stack_grow_fast;
+      else {
+        os_use_gpools = !config->gpool_disable;
+        os_gstack_grow_fast = !config->stack_grow_linear;
+      }
       if (config->gpool_max_size > 0) {
         os_gpool_max_size = mp_align_up(config->gpool_max_size, 64 * MP_KIB);
+      }
+      if (config->stack_max_size > 0) {
+        os_gstack_size = mp_align_up(config->stack_max_size, 4 * MP_KIB);
       }
       if (config->stack_exn_guaranteed > 0) {
         os_gstack_exn_guaranteed = mp_align_up(config->stack_exn_guaranteed, 4 * MP_KIB);
@@ -460,7 +467,10 @@ bool mp_gstack_init(mp_config_t* config) {
 
   // Return actual settings
   if (config != NULL) {
-    config->gpool_enable = os_use_gpools;
+    config->gpool_disable = !os_use_gpools;
+    config->stack_use_overcommit = os_use_overcommit;
+    config->stack_grow_linear = !os_gstack_grow_fast;
+    config->stack_reset_decommits = os_gstack_reset_decommits;
     config->gpool_max_size = os_gpool_max_size;
     config->stack_max_size = os_gstack_size;
     config->stack_gap_size = os_gstack_gap;

@@ -26,8 +26,9 @@ int main(int argc, char** argv) {
   printf("main\n");
   
   mp_config_t config = { };
-  //config.gpool_enable = true;
-  //config.stack_grow_fast = true;
+  config.stack_use_overcommit = true;
+  //config.gpool_disable = true;
+  //config.stack_grow_linear = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
   //config.stack_initial_commit = 64 * 1024L; 
   //config.stack_cache_count = -1;

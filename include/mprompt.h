@@ -65,17 +65,18 @@ mp_decl_export mp_resume_t* mp_resume_dup(mp_resume_t* r);    // only myield res
 #include <stddef.h>
 #include <stdbool.h>
 
-// Configuration settings; any zero value uses the default setting.
+// Configuration settings; any zero/false value uses the default setting.
 typedef struct mp_config_s {
-  bool      gpool_enable;         // enable gpools for in-process stack reuse
-  bool      stack_grow_fast;      // set to `true` to use doubling (up to 1MiB) to grow the stack faster
-  bool      stack_overcommit;     // use overcommit on systems that support this (Linux only)
+  bool      gpool_disable;        // disable gpools and allocate per-stack
+  bool      stack_grow_linear;    // grow stacks per-page instead of by doubling (to up to 1MiB at a time)
+  bool      stack_use_overcommit; // use overcommit on systems that support this (Linux only) -- sets gpool_disable and stack_grow_linear
+  bool      stack_reset_decommits;// instead of resetting memory, use a full decommit in instead.
   ptrdiff_t gpool_max_size;       // maximum virtual size per gpool (256 GiB)
   ptrdiff_t stack_max_size;       // maximum virtual size of a gstack (8 MiB)
   ptrdiff_t stack_exn_guaranteed; // guaranteed extra stack space available during exception unwinding (Windows only) (16 KiB)
   ptrdiff_t stack_initial_commit; // initial commit size of a gstack (OS page size, 4 KiB)
   ptrdiff_t stack_gap_size;       // virtual no-access gap between stacks for security (64 KiB)
-  ptrdiff_t stack_cache_count;    // count of gstacks to keep in a thread-local cache (4)
+  ptrdiff_t stack_cache_count;    // count of gstacks to keep in a thread-local cache (4)  
 } mp_config_t;
 
 // Initialize with `config`; use NULL for default settings.
