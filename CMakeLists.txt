@@ -20,15 +20,15 @@ set(mpeff_sources    src/mpeff/main.c)
 set(test_sources
     test/util.c
     test/effects.c
-    test/test-reader.c
-    test/test-counter.c
-    test/test-countern.c
-    test/test-mstate.c
-    test/test-amb.c
-    test/test-amb-state.c
-    test/test-nqueens.c
-    test/test-rehandle.c
-    test/main.c)    
+    test/src/reader.c
+    test/src/counter.c
+    test/src/countern.c
+    test/src/mstate.c
+    test/src/amb.c
+    test/src/amb-state.c
+    test/src/nqueens.c
+    test/src/rehandle.c
+    test/test-main.c)    
 
 set(mp_cflags)
 set(mp_install_dir)
@@ -52,9 +52,9 @@ else()
   set(mp_mpeff_name   "mpeffx")
     
   list(APPEND test_sources 
-              test/test-exn.cpp
-              test/test-multi-unwind.cpp
-              test/test-throw.cpp)
+              test/src/exn.cpp
+              test/src/multi-unwind.cpp
+              test/src/throw.cpp)
 
   SET_SOURCE_FILES_PROPERTIES(${mprompt_sources} PROPERTIES LANGUAGE CXX )
   SET_SOURCE_FILES_PROPERTIES(${mpeff_sources} PROPERTIES LANGUAGE CXX )
