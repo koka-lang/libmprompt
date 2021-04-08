@@ -4,7 +4,8 @@
   under the terms of the MIT License. A copy of the license can be
   found in the "LICENSE" file at the root of this distribution.
 
-  Rehandle implements the "evil" example from Xie et al, ICFP'20.
+  Rehandle implements the "evil" example from 
+  Ningning Xie and Daan Leijen, "Generalized Evidence Passing for Effect Handlers", MSR-TR-2021-5, Mar 2021.
   It shows how the stack can change after the call to `exit_capture` 
   with a different reader_handler on top.
 -----------------------------------------------------------------------------*/
