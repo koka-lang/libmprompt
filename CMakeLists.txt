@@ -25,10 +25,10 @@ set(test_sources
     test/src/countern.c
     test/src/mstate.c
     test/src/amb.c
-    test/src/amb-state.c
+    test/src/amb_state.c
     test/src/nqueens.c
     test/src/rehandle.c
-    test/test-main.c)    
+    test/test_main.c)    
 
 set(mp_cflags)
 set(mp_install_dir)
@@ -53,7 +53,7 @@ else()
     
   list(APPEND test_sources 
               test/src/exn.cpp
-              test/src/multi-unwind.cpp
+              test/src/multi_unwind.cpp
               test/src/throw.cpp)
 
   SET_SOURCE_FILES_PROPERTIES(${mprompt_sources} PROPERTIES LANGUAGE CXX )
