@@ -1,3 +1,5 @@
+<img align="left" width="100" height="100" src="doc/libmprompt-logo.png"/>
+
 [<img style="float:right" align="right" src="https://dev.azure.com/Daan0324/libmprompt/_apis/build/status/koka-lang.libmprompt?branchName=main"/>](https://dev.azure.com/Daan0324/libmprompt/_build?definitionId=2)
 
 # libmprompt
