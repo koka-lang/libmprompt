@@ -438,7 +438,7 @@ bool mp_gstack_init(const mp_config_t* config) {
       if (config->stack_gap_size > 0) {
         os_gstack_gap = mp_align_up(config->stack_gap_size, 4 * MP_KIB);
       }
-      if (config->stack_cache_count > 0) {
+      if (config->stack_cache_count >= 0) {
         os_gstack_cache_max_count = config->stack_cache_count;
       }
       else if (config->stack_cache_count < 0) {
@@ -470,6 +470,7 @@ bool mp_gstack_init(const mp_config_t* config) {
 
 mp_config_t mp_config_default(void) {
   mp_config_t cfg;
+  memset(&cfg, 0, sizeof(cfg));
   #ifdef _WIN32
   cfg.gpool_enable = false;
   cfg.stack_grow_fast = false;
