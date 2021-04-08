@@ -96,10 +96,10 @@ We use `cmake` to build:
 > cd out/debug
 > cmake ../..
 > make
-> ./mptest
+> ctest .
 ```
 
-This will build the libraries `libmpromptx.a` and `libmpeffx.a`.
+This will build the libraries `libmpromptx.a` and `libmpeffx.a`, and run the tests.
 
 Pass the option `cmake ../.. -DMP_USE_C=ON` to build the C versions of the libraries
 (but these do not handle- or propagate exceptions).
