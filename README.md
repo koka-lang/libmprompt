@@ -2,7 +2,7 @@
 
 
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
-Latest release: v0.4, 2021-04-04.
+Latest release: v0.5, 2021-04-07.
 
 A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
@@ -68,6 +68,7 @@ Enjoy,
   Daan Leijen and KC Sivaramakrishnan.
 
 Releases:
+- 2021-04-07: `v0.5`: better handling of signals, improved Windows page fault handler.
 - 2021-04-04: `v0.4`: initial support for Linux arm64.
 - 2021-04-03: `v0.3`: better backtraces on Windows, support libunwind.
 - 2021-04-01: `v0.2`: improved debugging on macOS with `lldb`.
@@ -109,10 +110,17 @@ in `ide/vs2019/libmprompt.sln` to build and test.
 
 Some known issues are:
 
-- `gdb`, `lldb`: when debugging (with _gpools_ enabled) on Linux you may see 
+- `gdb`, `lldb`: when debugging on Linux (without overcommit) you may see 
   segmentation fault errors (`SEGV`) which happen when demand paging stack memory; 
   you need to continue through those or set the debugger to ignore them 
-  (enter `handle SIGSEGV nostop` in `gdb`).
+  (enter `handle SIGSEGV nostop noprint` in `gdb`, or 
+    break on main and use `process handle --pass true --stop false --notify true SIGSEGV SIGBUS` 
+    in [`lldb`](https://stackoverflow.com/questions/52377562/how-do-you-create-a-lldb-script-to-ignore-sigsegv-and-sigbus)).
+  Another workaround is to use overcommit when debugging which does not use
+  a signal handler:
+  ```C
+  mp_config_t cfg = { }; cfg.stack_use_overcommit = true; mp_init(&cfg); 
+  ```
   
 - `lldb`: when debugging on macOS we use an extra thread
   to handle Mach exceptions (to avoid a long standing [bug](https://bugs.llvm.org//show_bug.cgi?id=22868) in `lldb`).
