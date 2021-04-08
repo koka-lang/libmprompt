@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
   config.stack_grow_fast = true;
   //config.stack_max_size = 1 * 1024 * 1024L;
   //config.stack_initial_commit = 64 * 1024L; 
-  config.stack_cache_count = 0; // disable per-thread cache
+  //config.stack_cache_count = 0; // disable per-thread cache
   mp_init(&config);
 
   size_t start_rss = 0;
