@@ -5,7 +5,7 @@
 # libmprompt
 
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
-Latest release: v0.5.1, 2021-04-07.
+Latest release: v0.5.2, 2021-04-08.
 
 A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
@@ -71,7 +71,7 @@ Enjoy,
   Daan Leijen and KC Sivaramakrishnan.
 
 Releases:
-- 2021-04-07: `v0.5`: better handling of signals, improved Windows page fault handler.
+- 2021-04-08: `v0.5.2`: better handling of signals, improved Windows page fault handler.
 - 2021-04-04: `v0.4`: initial support for Linux arm64.
 - 2021-04-03: `v0.3`: better backtraces on Windows, support libunwind.
 - 2021-04-01: `v0.2`: improved debugging on macOS with `lldb`.
