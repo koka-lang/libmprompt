@@ -6,9 +6,8 @@
 - `gstack.c`: in-place growable stacks using virtual memory. Provides the main interface
   to allocate gstacks and maintains a thread-local cache of gstacks.
   This file includes the  following files depending on the OS:
-   - `gstack_gpool.c`: Implements an efficient virtual "pool" of gstacks that is needed
-      on systems without overcommit to reliably (and efficiently) determine if an address can be 
-      demand-paged.
+   - `gstack_gpool.c`: Implements an efficient virtual "pool" of gstacks that allows
+     reusing the memory for gstacks in-process.
    - `gstack_win.c`: gstacks using the Windows `VirtualAlloc` API.
    - `gstack_mmap.c`: gstacks using the Posix `mmap` API.
    - `gstack_mmap_mach.c`: included by `gstack_mmap.c` on macOS (using the Mach kernel) which
@@ -23,12 +22,15 @@
 
 # Gpools
 
-On systems without overcommit (like macOS, or Linux with overcommit disabled)
-or on Windows using exponential commit for pages on the stack,
-we need to use our own page fault handler to commit stack pages on-demand.
-To detect reliably whether a page fault occurred in one of our stacks and 
-also to limit expansion of stacks beyond their maximum size, we reserve
-large virtual memory areas, called a `gpool`, where the  `gstack`s are located.
+In order to reuse memory for gstacks in-process we reserve
+large virtual memory areas, called a `gpool`, where `gstack`s are located.
+We use `MADV_FREE` to keep the memory for freed gstacks in-process unless the
+OS needs to reclaim it for other processes. On Windows unfortunately we cannot
+(yet) use `MEM_RESET` due to guard page issues and always decommit the memory
+(and there is therefor less advantage to using gpools on Windows).
+On macOS we also use gpools when running in the debugger so we can use a mach
+exception handler thread which uses the gpools to determine if segfaults 
+occurred in one of our gstacks (on another thread).
 
 The gpools are linked together with each gpool using by default about 256 GiB virtual
 adress space (containing about 32000 8MiB virtual gstacks).
@@ -44,18 +46,15 @@ and the first stack is used for the gpool info:
   meta-data        gap  
 ```
 
-Other advantanges of using gpools include 
-- The stack memory can be grown by doubling (up to 1MiB)
-   which can have a performance advantage. 
+Advantanges of using gpools include 
+- The stack memory can be grown by doubling (up to 1MiB) which can have a performance advantage. 
 - Since the memory stays in-process, reusing
    gstacks can be more efficient than going through the OS to unmap/remap memory as
    that needs to be re-zero'd at allocation time.
+- We can determine out-of-thread if a segfault occurred in one of our gstacks.
 
-By default, gpools are only used when overcommit is not available; this means
-that by default a gpool is not used on desktop Linux or Windows. You can configure
-this though using [`mp_init(config)`](../../include/mprompt.h#L65) where:
-- [`config.gpool_enable`](../../test/main.c#L28) can be set to `true` to always enable gpools.
-- `config.gpool_max_size` can be set to the initial virtual size of a gpool (256 GiB by default).
+Gpools are enabled by default but can be supressed by using `config.gpools_disable = true`
+or using `config.stack_use_overcommit = true` in the initial configuration (`mp_init`).
 
 
 # Low-level Layout of Gstacks
@@ -83,14 +82,12 @@ On Windows, a gstack is allocated as:
 ```
 The guard page at the end of the committed area will
 move down into the reserved area to commit further stack pages on-demand. 
-If enabling gpools ([`config.gpool_enable`](test/main.c#L28)), the layout 
-of the stack is the same and still uses  guard pages.
+
 
 ## Linux and macOS
 
 On `mmap` based systems the layout depends whether gpools
-are enabled. If gpools are enabled (which is automatic of the
-OS has no overcommit), the layout is:
+are enabled. If gpools are enabled (which is the default), the layout is:
 
 ```ioke
 |------------|
@@ -115,7 +112,8 @@ reliably whether a stack can be grown safely (up to the `limit`).
 grow through doubling which can be more performant, as well as 
 allow better reuse of allocated stack memory.)
 
-If the OS has overcommit (and gpools are not enabled explicitly),
+If the OS has overcommit (and the initial configuration uses 
+`config.stack_use_overcommit=true`), then 
 the gstack is allocated instead as fully committed from the start
 (with read/write access):
 
