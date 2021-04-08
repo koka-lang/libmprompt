@@ -113,9 +113,7 @@ Some known issues are:
 - `gdb`, `lldb`: when debugging on Linux (without overcommit) you may see 
   segmentation fault errors (`SEGV`) which happen when demand paging stack memory; 
   you need to continue through those or set the debugger to ignore them 
-  (enter `handle SIGSEGV nostop noprint` in `gdb`, or 
-    break on main and use `process handle --pass true --stop false --notify true SIGSEGV SIGBUS` 
-    in [`lldb`](https://stackoverflow.com/questions/52377562/how-do-you-create-a-lldb-script-to-ignore-sigsegv-and-sigbus)).
+  (enter `handle SIGSEGV nostop noprint` in `gdb`).
   Another workaround is to use overcommit when debugging which does not use
   a signal handler:
   ```C
