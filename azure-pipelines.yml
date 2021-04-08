@@ -20,11 +20,11 @@ jobs:
       windows-2019
   strategy:
     matrix:
-      Debug:
+      Debug++:
         BuildType: debug
         cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Debug
         MSBuildConfiguration: Debug
-      Release:
+      Release++:
         BuildType: release
         cmakeExtraArgs: -DCMAKE_BUILD_TYPE=Release
         MSBuildConfiguration: Release     
