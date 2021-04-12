@@ -69,6 +69,9 @@ struct mp_prompt_s {
   mp_return_point_t* return_point;  // return point in the parent (if not suspended..)
   mp_resume_point_t* resume_point;  // resume point for a suspended prompt chain. (the resume will be in the `top->gstack`)
 
+  mp_startc_fun_t*   start_fun;     // when created suspended, `resume_point` (and `return_point`) are NULL and this is is the start function
+  void*              start_arg;     // extra argument for the start fun (besides the resumption argument)
+
   mp_unwind_frame_t* unwind_frame;  // used to aid with unwinding on some platforms (windows only for now)
 };
 
@@ -179,7 +182,7 @@ static bool mp_prompt_is_ancestor(mp_prompt_t* p) {
 #endif
 
 // Allocate a fresh (suspended) prompt
-mp_prompt_t* mp_prompt_create(void) {
+mp_resume_t* mp_prompt_create(mp_startc_fun_t* fun, void* start_arg) {
   // allocate a fresh growable stack
   mp_gstack_t* gstack = mp_gstack_alloc();
   if (gstack == NULL) mp_fatal_message(ENOMEM, "unable to allocate a stack\n");
@@ -192,7 +195,9 @@ mp_prompt_t* mp_prompt_create(void) {
   p->resume_point = NULL;
   p->return_point = NULL;
   p->unwind_frame = NULL;
-  return p;
+  p->start_fun = fun;
+  p->start_arg = start_arg;
+  return mp_resume_once(p);
 }
 
 // Free a prompt and drop its children
@@ -274,7 +279,6 @@ static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_poin
 
 typedef struct mp_entry_env_s {
   mp_prompt_t* prompt;
-  mp_start_fun_t* fun;
   void* arg;
 } mp_entry_env_t;
 
@@ -283,11 +287,12 @@ static  void mp_prompt_stack_entry(void* penv, mp_unwind_frame_t* unwind_frame) 
   mp_entry_env_t* env = (mp_entry_env_t*)penv;
   mp_prompt_t* p = env->prompt;
   p->unwind_frame = unwind_frame;
+  mp_assert_internal(p->start_fun != NULL);
   //mp_prompt_stack_entry(p, env->fun, env->arg);
   #ifdef __cplusplus
   try {
   #endif
-    void* result = (env->fun)(p, env->arg);
+    void* result = (p->start_fun)(p, p->start_arg, env->arg);
     // RET: return from a prompt
     mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
     ret->arg = result;
@@ -359,25 +364,23 @@ static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
     }
     else {
       // PI: initial entry, switch to the new stack with an initial function      
-      mp_gstack_enter(p->gstack, (mp_jmpbuf_t**)&p->return_point, &mp_prompt_stack_entry, arg);
+      mp_entry_env_t env = { p, arg };
+      mp_gstack_enter(p->gstack, (mp_jmpbuf_t**)&p->return_point, &mp_prompt_stack_entry, &env);
     }
     mp_unreachable("mp_prompt_resume");    // should never return
   }
 }
 
-void* mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg) {
-  mp_assert_internal(!mp_prompt_is_active(p) && p->resume_point == NULL);
-  mp_entry_env_t env;
-  env.prompt = p;
-  env.fun = fun;
-  env.arg = arg;
-  return mp_prompt_resume(p, &env);
+
+static void* mp_startc_fun(mp_prompt_t* p, void* sfun, void* arg) {
+  mp_start_fun_t* fun = (mp_start_fun_t*)sfun;
+  return (fun)(p, arg);
 }
 
 // Install a fresh prompt `p` with a growable stack and start running `fun(p,arg)` on it.
 void* mp_prompt(mp_start_fun_t* fun, void* arg) {
-  mp_prompt_t* p = mp_prompt_create();
-  return mp_prompt_enter(p, fun, arg);  // enter the initial stack with fun(arg)
+  mp_resume_t* r = mp_prompt_create(&mp_startc_fun, fun);
+  return mp_resume(r, arg);  // enter the initial stack with fun(arg)
 }
 
 
@@ -398,7 +401,7 @@ void* mp_resume(mp_resume_t* resume, void* arg) {
   mp_prompt_t* p = mp_resume_is_once(resume);
   if (mp_unlikely(p == NULL)) return mp_mresume(mp_resume_is_multi(resume), arg);
   mp_assert_internal(p->refcount == 1);
-  mp_assert_internal(p->resume_point != NULL);
+  mp_assert_internal(p->resume_point != NULL || p->start_fun != NULL);
   return mp_prompt_resume(p, arg);  // resume back to yield point
 }
 

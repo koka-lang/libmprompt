@@ -58,5 +58,8 @@
     <ClCompile Include="..\..\test\src\rehandle.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\test\src\wasm_generator.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

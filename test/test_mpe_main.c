@@ -52,6 +52,9 @@ static void test_c(void) {
   amb_run();
   amb_state_run();
   nqueens_run();
+
+  // wasm lib
+  wasm_generator_run();
 }
 
 

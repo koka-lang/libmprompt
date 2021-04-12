@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <mpeff.h>
-
+#include <mpwasm.h>
 
 
 #define UNUSED(x)  (void)(x)
@@ -50,6 +50,10 @@ static inline void exn_run(void) { }
 static inline void multi_unwind_run(void) { };
 static inline void thread_rehandle_run(void) { };
 #endif
+
+
+void wasm_generator_run(void);
+
 
 #ifdef __cplusplus
 class test_raii_t {

@@ -177,7 +177,7 @@ static void* with_resume(void* arg) {
 }
 
 static void test(void) {
-  long res;
+  long res = 0;
   mpt_bench{
     void* r = reader_handle(&with_exit_handle, 1, NULL);        // reader returns 1  -- final return is a resumption from with_exit_handle
     res = mpe_long_voidp(reader_handle(&with_resume, 2, r));    // new reader returns 2 -- this resumes the resumption under a new reader

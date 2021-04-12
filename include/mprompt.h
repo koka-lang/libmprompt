@@ -99,9 +99,11 @@ mp_decl_export int          mp_backtrace(void** backtrace, int len);
 mp_decl_export long         mp_resume_resume_count(mp_resume_t* r);
 mp_decl_export int          mp_resume_should_unwind(mp_resume_t* r);  // refcount==1 && resume_count==0
 
-// Separate prompt creation
-mp_decl_export mp_prompt_t* mp_prompt_create(void);
-mp_decl_export void* mp_prompt_enter(mp_prompt_t* p, mp_start_fun_t* fun, void* arg) ;
+
+typedef void* (mp_startc_fun_t)(mp_prompt_t*, void* create_arg, void* arg);
+
+// Suspended prompt creation
+mp_decl_export mp_resume_t* mp_prompt_create(mp_startc_fun_t* fun, void* create_arg);
 
 // Walk the chain of prompts.
 mp_decl_export mp_prompt_t* mp_prompt_top(void);
