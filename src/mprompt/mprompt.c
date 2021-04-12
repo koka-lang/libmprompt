@@ -379,7 +379,7 @@ static void* mp_startc_fun(mp_prompt_t* p, void* sfun, void* arg) {
 
 // Install a fresh prompt `p` with a growable stack and start running `fun(p,arg)` on it.
 void* mp_prompt(mp_start_fun_t* fun, void* arg) {
-  mp_resume_t* r = mp_prompt_create(&mp_startc_fun, fun);
+  mp_resume_t* r = mp_prompt_create(&mp_startc_fun, (void*)fun);
   return mp_resume(r, arg);  // enter the initial stack with fun(arg)
 }
 

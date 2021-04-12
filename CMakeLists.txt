@@ -8,7 +8,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 14)
 
 option(MP_USE_C             "Build C versions of the library without exception support" OFF)
-set(mp_version "0.4")
+set(mp_version "0.6")
 
 # all sources are included in one file so we can generate independent libraries and stand-alone object files.
 set(mprompt_sources  src/mprompt/main.c)
@@ -16,6 +16,9 @@ set(mprompt_sources  src/mprompt/main.c)
 
 set(mpeff_sources    src/mpeff/main.c)
     # src/mpeff/mpeff.c
+
+set(mpwasm_sources    src/mpwasm/main.c)
+    # src/mpwasm/mpwasm.c    
 
 set(test_mpe_main_sources
     test/common_util.c
@@ -65,6 +68,7 @@ if (MP_USE_C)
   message(STATUS "Use the C compiler to compile (MP_USE_C=ON)")  
   set(mp_mprompt_name "mprompt")
   set(mp_mpeff_name   "mpeff") 
+  set(mp_mpwasm_name  "mpwasm") 
 
   if(CMAKE_C_COMPILER_ID MATCHES "MSVC|Intel")
     message(WARNING "It is not recommended to use plain C with this compiler (due to SEH) (${CMAKE_C_COMPILER_ID})")
@@ -74,10 +78,12 @@ else()
   message(STATUS "Use the C++ compiler to compile (${CMAKE_CXX_COMPILER_ID}) (MP_USE_C=OFF)")  
   set(mp_mprompt_name "mpromptx")
   set(mp_mpeff_name   "mpeffx")
+  set(mp_mpwasm_name  "mpwasmx") 
   
   SET_SOURCE_FILES_PROPERTIES(${mprompt_sources} PROPERTIES LANGUAGE CXX )
-  SET_SOURCE_FILES_PROPERTIES(${mpeff_sources} PROPERTIES LANGUAGE CXX )
-  SET_SOURCE_FILES_PROPERTIES(${test_sources} PROPERTIES LANGUAGE CXX )
+  SET_SOURCE_FILES_PROPERTIES(${mpeff_sources}   PROPERTIES LANGUAGE CXX )
+  SET_SOURCE_FILES_PROPERTIES(${mpwasm_sources}  PROPERTIES LANGUAGE CXX )
+  SET_SOURCE_FILES_PROPERTIES(${test_sources}    PROPERTIES LANGUAGE CXX )
   
   if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
     list(APPEND mp_cflags -Wno-deprecated)
@@ -154,7 +160,7 @@ endif()
 
 
 message(STATUS "")
-message(STATUS "Libraries : lib${mp_mprompt_name}, lib${mp_mpeff_name}")
+message(STATUS "Libraries : lib${mp_mprompt_name}, lib${mp_mpeff_name}, lib${mp_mpwasm_name}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 if(MP_USE_C)
   message(STATUS "Compiler  : ${CMAKE_C_COMPILER} ${mp_cflags}")
@@ -198,6 +204,19 @@ target_include_directories(mpeff PUBLIC
 )
 if (NOT WIN32)
   target_link_libraries(mpeff PUBLIC pthread)
+endif()
+
+# mpwasm library
+add_library(mpwasm STATIC ${mpwasm_sources} ${mprompt_asm_source})
+set_target_properties(mpwasm PROPERTIES VERSION ${mp_version} OUTPUT_NAME ${mp_mpwasm_name} )
+target_compile_definitions(mpwasm PRIVATE MPE_STATIC_LIB)
+target_compile_options(mpwasm PRIVATE ${mp_cflags})
+target_include_directories(mpwasm PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${mp_install_dir}/include>
+)
+if (NOT WIN32)
+  target_link_libraries(mpwasm PUBLIC pthread)
 endif()
 
 

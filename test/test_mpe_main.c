@@ -54,7 +54,7 @@ static void test_c(void) {
   nqueens_run();
 
   // wasm lib
-  wasm_generator_run();
+  // wasm_generator_run();
 }
 
 

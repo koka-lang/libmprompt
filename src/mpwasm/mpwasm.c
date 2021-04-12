@@ -383,5 +383,5 @@ static void* mpw_start_fun(mp_prompt_t* prompt, void* efun, void* earg) {
 }
 
 mpw_cont_t* mpw_new(mpw_action_fun_t fun) {
-  return mp_prompt_create(&mpw_start_fun, fun);
+  return mp_prompt_create(&mpw_start_fun, (void*)fun);
 }
