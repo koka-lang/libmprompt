@@ -152,6 +152,21 @@ public:
 #endif
 
 
+/*-----------------------------------------------------------------
+  Unwind and abort
+-----------------------------------------------------------------*/
+
+
+static void* mpw_abort_clause(mp_resume_t* r, void* arg) {
+  mp_resume_drop(r);
+  return arg;
+}
+
+static void* mpw_abort_to(mpw_frame_handle_t* h, void* arg) {
+  mp_yield(h->prompt, &mpw_abort_clause, arg);
+  return NULL;
+}
+
 #if MPW_HAS_TRY
 // in some cases (like MPW_OP_NORESUME) we need to unwind to the effect handler operation
 // while calling destructors. We do this using a special unwind exception.
@@ -181,20 +196,10 @@ static void mpw_unwind_to(mpw_frame_handle_t* target, void* arg) {
 static void* mpw_perform_yield_to_abort(mpw_frame_handle_t* h, void* arg);
 static void mpw_unwind_to(mpw_frame_handle_t* target, void* arg) {
   // TODO: walk the handlers and invoke finally frames
-  mpw_perform_yield_to_abort(target, op, arg);
+  mpw_abort_to(target, arg);
 }
 #endif
 
-
-static void* mpw_abort_clause(mp_resume_t* r, void* arg) {
-  mp_resume_drop(r);
-  return arg;
-}
-
-static void* mpw_abort_to(mpw_frame_handle_t* h, void* arg) {
-  mp_yield(h->prompt, &mpw_abort_clause, arg);
-  return NULL;
-}
 
 
 // Simulate operation definition for resume_unwind
