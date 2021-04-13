@@ -102,6 +102,23 @@ static inline ssize_t mp_min(ssize_t x, ssize_t y) {
   return (x <= y ? x : y);
 }
 
+
+/*------------------------------------------------------------------------------
+  Stack guards (todo)
+------------------------------------------------------------------------------*/
+
+static inline uintptr_t mp_guard_cookie(void) {
+  return (uintptr_t)0; // no randomness for now
+}
+
+static inline void* mp_guard(void* p) {
+  return (void*)((uintptr_t)p ^ mp_guard_cookie());
+}
+
+static inline void* mp_unguard(void* p) {
+  return (void*)((uintptr_t)p ^ mp_guard_cookie());
+}
+
 /*------------------------------------------------------------------------------
   Malloc interface (to facilitate replacing malloc)
 ------------------------------------------------------------------------------*/

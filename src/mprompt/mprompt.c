@@ -267,6 +267,28 @@ static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_poin
 
 
 //-----------------------------------------------------------------------
+// Checked longjmp
+// We use a form of control-flow integrity by only allowing
+// a longjmp to two known code locations (one for resume, and one for return)
+//-----------------------------------------------------------------------
+
+// The code addresses are initialized on the first call to setjmp (and are located right after the setjmp call)
+// todo: can we make this static so these go to the readonly section? 
+static void* mp_return_label;
+static void* mp_resume_label;
+
+
+// Checked Longjmp to a known location
+static mp_decl_noreturn void mp_checked_longjmp(void* label, mp_jmpbuf_t* jmp) {
+  // security: check if we return the designated label
+  if (mp_unlikely(mp_unguard(label) != jmp->reg_ip)) {
+    mp_fatal_message(EFAULT, "potential stack corruption detected: expected ip %p, but found %p\n", mp_unguard(label), jmp->reg_ip);
+  }
+  mp_longjmp(jmp);
+}
+
+
+//-----------------------------------------------------------------------
 // Create an initial prompt
 //-----------------------------------------------------------------------
 
@@ -340,6 +362,7 @@ static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, m
   }
 }
 
+
 // Resume a prompt: used for the initial entry as well as for resuming in a suspended prompt.
 static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
   mp_return_point_t ret;  
@@ -350,12 +373,17 @@ static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
     return mp_prompt_exec_yield_fun(&ret, p);  // must be under the setjmp to preserve the stack
   }
   else {
+    // security: longjmp can only jump to a known code point
+    if (mp_unlikely(mp_return_label == NULL)) { 
+      mp_return_label = mp_guard(ret.jmp.reg_ip); 
+    }
+
     mp_assert(p->parent == NULL);
     mp_resume_point_t* res = mp_prompt_link(p,&ret);  // make active
     if (res != NULL) {
       // PR: resume to yield point
       res->result = arg;
-      mp_longjmp(&res->jmp);
+      mp_checked_longjmp(mp_resume_label, &res->jmp);
     }
     else {
       // PI: initial entry, switch to the new stack with an initial function      
@@ -412,7 +440,7 @@ static void* mp_prompt_resume_tail(mp_prompt_t* p, void* arg, mp_return_point_t*
   mp_assert_internal(p->resume_point != NULL);
   mp_resume_point_t* res = mp_prompt_link(p,ret);   // make active using the given return point!
   res->result = arg;
-  mp_longjmp(&res->jmp);
+  mp_checked_longjmp(mp_resume_label, &res->jmp);
 }
 
 
@@ -470,12 +498,16 @@ static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, mp_yield_
     return res.result;
   }
   else {
+    // security: can only longjmp to a static location
+    if (mp_unlikely(mp_resume_label == NULL)) {
+      mp_resume_label = mp_guard(res.jmp.reg_ip);
+    }
     // YR: yielding to prompt, or resumed prompt (P)
     mp_return_point_t* ret = mp_prompt_unlink(p, &res);
     ret->fun = fun;
     ret->arg = arg;
     ret->kind = rkind;
-    mp_longjmp(&ret->jmp);
+    mp_checked_longjmp(mp_return_label, &ret->jmp);
   }
 }
 

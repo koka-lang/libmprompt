@@ -100,6 +100,7 @@ mp_setjmp PROC
   stmxcsr [rcx+272]        ; save sse control word
   fnstcw  [rcx+276]        ; save fpu control word
   
+
   xor     rax, rax         ; return 0 at first
   ret
 
