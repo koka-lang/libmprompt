@@ -61,15 +61,15 @@ typedef struct mp_return_point_s {   // allocated on the parent stack (which per
 //              note that the prompt children are still themselves in the _active_ state (but not part of a current execution stack chain)
 
 struct mp_prompt_s {  
-  mp_prompt_t*  parent;     // parent: previous prompt up in the stack chain (towards bottom of the stack)
-  mp_prompt_t*  top;        // top of a suspended prompt chain.
-  intptr_t      refcount;   // free when drops to zero
-  void*         sp;         // security: contains the (guarded) expected stack pointer for a return (if active) or resume (if suspended)
-  mp_gstack_t*  gstack;     // the growable stacklet associated with this prompt;
-                            // note: the prompt structure itself is allocated at the base of the `gstack` to avoid a separate allocation.
+  mp_prompt_t*       parent;        // parent: previous prompt up in the stack chain (towards bottom of the stack)
+  mp_prompt_t*       top;           // top of a suspended prompt chain.
+  intptr_t           refcount;      // free when drops to zero
+  mp_gstack_t*       gstack;        // the growable stacklet associated with this prompt;
+                                 
   mp_return_point_t* return_point;  // return point in the parent (if not suspended..)
   mp_resume_point_t* resume_point;  // resume point for a suspended prompt chain. (the resume will be in the `top->gstack`)
 
+  void*              sp;            // security: contains the (guarded) expected stack pointer for a return (if active) or resume (if suspended)
   mp_unwind_frame_t* unwind_frame;  // used to aid with unwinding on some platforms (windows only for now)
 };
 
