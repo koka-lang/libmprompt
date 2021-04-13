@@ -44,10 +44,7 @@ typedef void* (mpe_actionfun_t)(void* arg);
 /// A `lh_resultfun` is called when a handled action is done.
 typedef void* (mpe_resultfun_t)(void* local, void* arg);
 
-/// An acquire function copies the local state in a handler when required.
-typedef void (mpe_acquirefun_t)(void* local);
 
-/// A release function releases the local state in a handler when required.
 typedef void (mpe_releasefun_t)(void* local);
 
 
@@ -102,8 +99,6 @@ typedef struct mpe_operation_s {
 /// Handler definition.
 typedef struct mpe_handlerdef_s {
   mpe_effect_t      effect;         ///< The Effect being handled.
-  mpe_acquirefun_t* local_acquire;  ///< Called when the local state needs to be acquired. Can be NULL.
-  mpe_releasefun_t* local_release;  ///< Called when the local state is released. Can be NULL.
   mpe_resultfun_t*  resultfun;      ///< Invoked when the handled action is done; can be NULL in which case the action result is passed unchanged.
   mpe_operation_t   operations[8];  ///< Definitions of all handled operations ending with an operation with `lh_opkind` `LH_OP_NULL`. Can be NULL to handle no operations;
                                     ///< Note: all operations must be in the same order here as in the effect definition! (since each operation has a fixed index).

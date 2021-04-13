@@ -24,7 +24,7 @@ static void* handle_reader_ask(mpe_resume_t* r, void* local, void* arg) {
 }
  
 void* reader_handle(mpe_actionfun_t action, long init, void* arg) {
-  static const mpe_handlerdef_t reader_hdef = { MPE_EFFECT(reader), NULL, NULL, NULL, {
+  static const mpe_handlerdef_t reader_hdef = { MPE_EFFECT(reader), NULL, {
     { MPE_OP_TAIL_NOOP, MPE_OPTAG(reader,ask), &handle_reader_ask },
     { MPE_OP_NULL, mpe_op_null, NULL }
   } };
@@ -38,7 +38,7 @@ static void* handle_greader_ask(mpe_resume_t* r, void* local, void* arg) {
 }
  
 void* greader_handle(mpe_actionfun_t action, long init, void* arg) {
-  static const mpe_handlerdef_t greader_hdef = { MPE_EFFECT(reader), NULL, NULL, NULL, {
+  static const mpe_handlerdef_t greader_hdef = { MPE_EFFECT(reader), NULL, {
     { MPE_OP_SCOPED_ONCE, MPE_OPTAG(reader,ask), &handle_greader_ask },
     { MPE_OP_NULL, mpe_op_null, NULL }
   } };
@@ -59,7 +59,7 @@ static void* handle_exn_raise(mpe_resume_t* r, void* local, void* arg) {
 }
 
 void* exn_handle(mpe_actionfun_t action, void* arg) {
-  static const mpe_handlerdef_t exn_hdef = { MPE_EFFECT(exn), NULL, NULL, NULL, {
+  static const mpe_handlerdef_t exn_hdef = { MPE_EFFECT(exn), NULL, {
     { MPE_OP_NEVER, MPE_OPTAG(exn,raise), &handle_exn_raise },
     { MPE_OP_NULL, mpe_op_null, NULL }
   } };
@@ -84,7 +84,7 @@ static void* handle_state_set(mpe_resume_t* r, void* local, void* arg) {
   return mpe_resume_tail(r, arg, NULL);
 }
 
-static const mpe_handlerdef_t state_hdef = { MPE_EFFECT(state), NULL, NULL, NULL, {
+static const mpe_handlerdef_t state_hdef = { MPE_EFFECT(state), NULL, {
   { MPE_OP_TAIL_NOOP, MPE_OPTAG(state,get), &handle_state_get },
   { MPE_OP_TAIL_NOOP, MPE_OPTAG(state,set), &handle_state_set },
   { MPE_OP_NULL, mpe_op_null, NULL }
@@ -97,7 +97,7 @@ void* state_handle(mpe_actionfun_t action, long init, void* arg) {
 
 // Variants
 
-static const mpe_handlerdef_t ustate_hdef = { MPE_EFFECT(state), NULL, NULL, NULL, {
+static const mpe_handlerdef_t ustate_hdef = { MPE_EFFECT(state), NULL, {
   { MPE_OP_TAIL, MPE_OPTAG(state,get), &handle_state_get },
   { MPE_OP_TAIL, MPE_OPTAG(state,set), &handle_state_set },
   { MPE_OP_NULL, mpe_op_null, NULL }
@@ -107,7 +107,7 @@ void* ustate_handle(mpe_actionfun_t action, long init, void* arg) {
   return mpe_handle(&ustate_hdef, mpe_voidp_long(init), action, arg);
 }
 
-static const mpe_handlerdef_t ostate_hdef = { MPE_EFFECT(state), NULL, NULL, NULL, {
+static const mpe_handlerdef_t ostate_hdef = { MPE_EFFECT(state), NULL, {
   { MPE_OP_SCOPED_ONCE, MPE_OPTAG(state,get), &handle_state_get },
   { MPE_OP_SCOPED_ONCE, MPE_OPTAG(state,set), &handle_state_set },
   { MPE_OP_NULL, mpe_op_null, NULL }
@@ -117,7 +117,7 @@ void* ostate_handle(mpe_actionfun_t action, long init, void* arg) {
   return mpe_handle(&ostate_hdef, mpe_voidp_long(init), action, arg);
 }
 
-static const mpe_handlerdef_t gstate_hdef = { MPE_EFFECT(state), NULL, NULL, NULL, {
+static const mpe_handlerdef_t gstate_hdef = { MPE_EFFECT(state), NULL, {
   { MPE_OP_MULTI, MPE_OPTAG(state,get), &handle_state_get },
   { MPE_OP_MULTI, MPE_OPTAG(state,set), &handle_state_set },
   { MPE_OP_NULL, mpe_op_null, NULL }
@@ -152,7 +152,7 @@ static void* handle_amb_flip(mpe_resume_t* rc, void* local, void* arg) {
 }
   
 
-static const mpe_handlerdef_t amb_def = { MPE_EFFECT(amb), NULL, NULL, &handle_amb_result, {
+static const mpe_handlerdef_t amb_def = { MPE_EFFECT(amb), &handle_amb_result, {
   { MPE_OP_SCOPED, MPE_OPTAG(amb,flip), &handle_amb_flip },
   { MPE_OP_NULL, mpe_op_null, NULL }
 }};
@@ -198,7 +198,7 @@ static void* handle_choice_choose(mpe_resume_t* rc, void* local, void* arg) {
 }
   
 
-static const mpe_handlerdef_t choice_def = { MPE_EFFECT(choice), NULL, NULL, &handle_choice_result, {
+static const mpe_handlerdef_t choice_def = { MPE_EFFECT(choice), &handle_choice_result, {
   { MPE_OP_SCOPED, MPE_OPTAG(choice,choose), &handle_choice_choose },
   { MPE_OP_ABORT,  MPE_OPTAG(choice,fail), &handle_choice_fail },
   //{ MPE_OP_NEVER,  MPE_OPTAG(choice,fail), &handle_choice_fail },  // very slow in C++: nqueens(12) is about 15s vs. 0.6s with abort.

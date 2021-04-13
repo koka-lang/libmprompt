@@ -111,7 +111,7 @@ static void* _mstate_set(mpe_resume_t* rc, void* local, void* st) {
   return mpe_voidp_fun( function_create( env, &fun_put ) );
 }
 
-static const mpe_handlerdef_t mstate_def = { MPE_EFFECT(state), NULL, NULL, &_mstate_result, {
+static const mpe_handlerdef_t mstate_def = { MPE_EFFECT(state), &_mstate_result, {
   { MPE_OP_ONCE, MPE_OPTAG(state,get), &_mstate_get },
   { MPE_OP_ONCE, MPE_OPTAG(state,set), &_mstate_set },
   { MPE_OP_NULL, mpe_op_null, NULL }

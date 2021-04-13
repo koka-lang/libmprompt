@@ -44,7 +44,7 @@ static void* handle_multi_unwind(mpe_resume_t* r, void* local, void* arg) {
 }
   
 
-static const mpe_handlerdef_t multi_hdef = { MPE_EFFECT(multi), NULL, NULL, NULL, {
+static const mpe_handlerdef_t multi_hdef = { MPE_EFFECT(multi), NULL, {
   { MPE_OP_MULTI, MPE_OPTAG(multi,unwind), &handle_multi_unwind },
   { MPE_OP_NULL, mpe_op_null, NULL }
 }};

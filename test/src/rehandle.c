@@ -141,7 +141,7 @@ static void* op_exit_capture(mpe_resume_t* r, void* local, void* arg) {
 }
  
 static void* exit_handle(mpe_actionfun_t action, void* arg) {
-  static const mpe_handlerdef_t exit_hdef = { MPE_EFFECT(exit), NULL, NULL, NULL, {
+  static const mpe_handlerdef_t exit_hdef = { MPE_EFFECT(exit), NULL, {
     { MPE_OP_ONCE, MPE_OPTAG(exit,capture), &op_exit_capture },
     { MPE_OP_NULL, mpe_op_null, NULL }
   } };
