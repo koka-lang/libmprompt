@@ -64,6 +64,7 @@ struct mp_prompt_s {
   mp_prompt_t*  parent;     // parent: previous prompt up in the stack chain (towards bottom of the stack)
   mp_prompt_t*  top;        // top of a suspended prompt chain.
   intptr_t      refcount;   // free when drops to zero
+  void*         sp;         // security: contains the (guarded) expected stack pointer for a return (if active) or resume (if suspended)
   mp_gstack_t*  gstack;     // the growable stacklet associated with this prompt;
                             // note: the prompt structure itself is allocated at the base of the `gstack` to avoid a separate allocation.
   mp_return_point_t* return_point;  // return point in the parent (if not suspended..)
@@ -236,30 +237,34 @@ static mp_prompt_t* mp_prompt_dup(mp_prompt_t* p) {
 }
 
 // Link a suspended prompt to the current prompt chain and set the new prompt top
-static inline mp_resume_point_t* mp_prompt_link(mp_prompt_t* p, mp_return_point_t* ret) {
+static inline mp_resume_point_t* mp_prompt_link(mp_prompt_t* p, mp_return_point_t* ret, void** sp) {
+  mp_assert_internal(ret != NULL);
   mp_assert_internal(!mp_prompt_is_active(p));
+  *sp = p->sp;
   p->parent = mp_prompt_top();
   _mp_prompt_top = p->top;
   p->top = NULL;
   if (mp_likely(ret != NULL)) { 
     p->return_point = ret; 
+    p->sp = mp_guard(ret->jmp.reg_sp);
     mp_unwind_frame_update(p->unwind_frame, &ret->jmp);
-  }                         
-  else {
-    mp_assert_internal(p->return_point != NULL);  
-  }
+  }                           
   mp_assert_internal(mp_prompt_is_active(p));  
   return p->resume_point;
 }
 
 // Unlink a prompt from the current chain and make suspend it (and set the new prompt top to its parent)
-static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_point_t* res) {
+static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_point_t* res, void** sp) {
   mp_assert_internal(mp_prompt_is_active(p));
   mp_assert_internal(mp_prompt_is_ancestor(p)); // ancestor of current top?
+  *sp = p->sp;
   p->top = mp_prompt_top();
   _mp_prompt_top = p->parent;
   p->parent = NULL;  
   p->resume_point = res;
+  if (mp_likely(res != NULL)) {   // on return/exception
+    p->sp = mp_guard(res->jmp.reg_sp);
+  }
   // note: leave return_point as-is for potential reuse in tail resumes
   mp_assert_internal(!mp_prompt_is_active(p));
   return p->return_point;
@@ -279,12 +284,15 @@ static void* mp_resume_label;
 
 
 // Checked Longjmp to a known location
-static mp_decl_noreturn void mp_checked_longjmp(void* label, mp_jmpbuf_t* jmp) {
+static mp_decl_noreturn void mp_checked_longjmp(void* label, void* sp, mp_jmpbuf_t* jmp) {
   // security: check if we return the designated label
   if (mp_unlikely(mp_unguard(label) != jmp->reg_ip)) {
     mp_fatal_message(EFAULT, "potential stack corruption detected: expected ip %p, but found %p\n", mp_unguard(label), jmp->reg_ip);
   }
-  mp_longjmp(jmp);
+  if (mp_unlikely(mp_unguard(sp) != jmp->reg_sp)) {
+    mp_fatal_message(EFAULT, "potential stack corruption detected: expected sp %p, but found %p\n", mp_unguard(sp), jmp->reg_sp);
+  }
+  mp_longjmp(jmp); 
 }
 
 
@@ -311,21 +319,23 @@ static  void mp_prompt_stack_entry(void* penv, mp_unwind_frame_t* unwind_frame) 
   #endif
     void* result = (env->fun)(p, env->arg);
     // RET: return from a prompt
-    mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
+    void* sp;
+    mp_return_point_t* ret = mp_prompt_unlink(p, NULL, &sp);
     ret->arg = result;
     ret->fun = NULL;
     ret->kind = MP_RETURN;
-    mp_longjmp(&ret->jmp);
+    mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
   #ifdef __cplusplus
   }
   catch (...) {
     mp_trace_message("catch exception to propagate across the prompt %p..\n", p);
-    mp_return_point_t* ret = mp_prompt_unlink(p, NULL);
+    void* sp;
+    mp_return_point_t* ret = mp_prompt_unlink(p, NULL, &sp);
     ret->exn = std::current_exception();
     ret->arg = NULL;
     ret->fun = NULL;
     ret->kind = MP_EXCEPTION;
-    mp_longjmp(&ret->jmp);
+    mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
   }
   #endif  
 }
@@ -379,11 +389,12 @@ static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
     }
 
     mp_assert(p->parent == NULL);
-    mp_resume_point_t* res = mp_prompt_link(p,&ret);  // make active
+    void* sp;
+    mp_resume_point_t* res = mp_prompt_link(p,&ret,&sp);  // make active
     if (res != NULL) {
       // PR: resume to yield point
       res->result = arg;
-      mp_checked_longjmp(mp_resume_label, &res->jmp);
+      mp_checked_longjmp(mp_resume_label, sp, &res->jmp);
     }
     else {
       // PI: initial entry, switch to the new stack with an initial function      
@@ -438,9 +449,10 @@ static void* mp_prompt_resume_tail(mp_prompt_t* p, void* arg, mp_return_point_t*
   mp_assert_internal(p->refcount == 1);
   mp_assert_internal(!mp_prompt_is_active(p));
   mp_assert_internal(p->resume_point != NULL);
-  mp_resume_point_t* res = mp_prompt_link(p,ret);   // make active using the given return point!
+  void* sp;
+  mp_resume_point_t* res = mp_prompt_link(p,ret,&sp);   // make active using the given return point!
   res->result = arg;
-  mp_checked_longjmp(mp_resume_label, &res->jmp);
+  mp_checked_longjmp(mp_resume_label, sp, &res->jmp);
 }
 
 
@@ -503,11 +515,12 @@ static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, mp_yield_
       mp_resume_label = mp_guard(res.jmp.reg_ip);
     }
     // YR: yielding to prompt, or resumed prompt (P)
-    mp_return_point_t* ret = mp_prompt_unlink(p, &res);
+    void* sp;
+    mp_return_point_t* ret = mp_prompt_unlink(p, &res, &sp);
     ret->fun = fun;
     ret->arg = arg;
     ret->kind = rkind;
-    mp_checked_longjmp(mp_return_label, &ret->jmp);
+    mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
   }
 }
 
