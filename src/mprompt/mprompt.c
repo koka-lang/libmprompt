@@ -181,10 +181,10 @@ static bool mp_prompt_is_ancestor(mp_prompt_t* p) {
 // Allocate a fresh (suspended) prompt
 mp_prompt_t* mp_prompt_create(void) {
   // allocate a fresh growable stack
-  mp_gstack_t* gstack = mp_gstack_alloc();
-  if (gstack == NULL) mp_fatal_message(ENOMEM, "unable to allocate a stack\n");
+  mp_prompt_t* p;
+  mp_gstack_t* gstack = mp_gstack_alloc(sizeof(mp_prompt_t), (void**)&p);
+  if (gstack == NULL) { mp_fatal_message(ENOMEM, "unable to allocate a stack\n"); }
   // allocate the prompt structure at the base of the new stack
-  mp_prompt_t* p = (mp_prompt_t*)mp_gstack_reserve(gstack, sizeof(mp_prompt_t));
   p->parent = NULL;
   p->top = p;
   p->refcount = 1;

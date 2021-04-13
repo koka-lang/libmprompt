@@ -17,9 +17,8 @@ typedef struct mp_gsave_s  mp_gsave_t;
 bool         mp_gstack_init(const mp_config_t* config); // normally called automatically
 void         mp_gstack_clear_cache(void);               // clear thread-local cache of gstacks (called automatically on thread termination)
 
-mp_gstack_t* mp_gstack_alloc(void); 
+mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra); 
 void         mp_gstack_free(mp_gstack_t* gstack, bool delay);
-void*        mp_gstack_reserve(mp_gstack_t* gstack, size_t size);
 void         mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fun_t* fun, void* arg);
 
 mp_gsave_t*  mp_gstack_save(mp_gstack_t* gstack, uint8_t* sp);    // save up to the given stack pointer (that should be in `gstack`)

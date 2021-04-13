@@ -33,9 +33,10 @@ struct mp_gstack_s {
   ssize_t       full_size;          // (for now always fixed to be `os_gstack_size`)
   uint8_t*      stack;              // stack inside the full area (without gaps)
   ssize_t       stack_size;         // actual available total stack size (includes reserved space) (depends on platform, but usually `os_gstack_size - 2*mp_gstack_gap`)
-  ssize_t       initial_commit;     // initial committed memory (usually `os_page_size`)
-  ssize_t       initial_reserved;   // initial reserved memory on the stack (for the `gstack_t` and `prompt_t` structures)  
-  ssize_t       committed;          // current committed area (or 0 if unknown)
+  ssize_t       initial_commit;     // initial committed memory (usually `os_page_size`)  
+  ssize_t       committed;          // current committed estimate
+  ssize_t       extra_size;         // size of extra allocated bytes.         
+  uint8_t       extra[1];           // extra allocated (holds the mp_prompt_t structure)
 };
 
 
@@ -188,27 +189,25 @@ static void mp_gstack_clear_delayed(void) {
 }
 
 // Allocate a growable stacklet.
-mp_gstack_t* mp_gstack_alloc(void)
+mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra)
 {
+  if (extra != NULL) { *extra = NULL;  }
   mp_gstack_init(NULL);  // always check initialization
   mp_assert(os_page_size != 0);
   mp_gstack_clear_delayed();  // this might free some gstacks to our local cache
   
   // first look in our thread local cache..
-  mp_gstack_t* g = _mp_gstack_cache;
-  #if defined(NDEBUG)
-  // pick the head if available
-  if (g != NULL) {
-    _mp_gstack_cache = g->next;
-    _mp_gstack_cache_count--;
-    g->next = NULL;
-  }
-  #else
-  // only use a cached stack if it is under the parent stack (to help unwinding during debugging)
-  void* sp = (void*)&g;
+  #if !defined(NDEBUG)
+  void* sp = (void*)&sp;
+  #endif
+  mp_gstack_t* g = _mp_gstack_cache;  
   mp_gstack_t* prev = NULL;
   while (g != NULL) {
-    bool good = (os_stack_grows_down ? (void*)g < sp : sp < (void*)g);
+    bool good = (g->extra_size >= extra_size);
+    #if !defined(NDEBUG)
+    // only use a cached stack if it is under the parent stack (to help unwinding during debugging)
+    good = good && (os_stack_grows_down ? (void*)g < sp : sp < (void*)g);
+    #endif  
     if (good) {
       if (prev == NULL) { _mp_gstack_cache = g->next; }
                    else { prev->next = g->next; }
@@ -221,23 +220,29 @@ mp_gstack_t* mp_gstack_alloc(void)
       g = g->next;
     }
   }
-  #endif
 
   // otherwise allocate fresh
   if (g == NULL) {
+    // allocate separately for security
+    extra_size = mp_align_up(extra_size, sizeof(void*));    
+    g = (mp_gstack_t*)mp_malloc(sizeof(mp_gstack_t) - 1 + extra_size); 
+    if (g == NULL) {
+      return NULL;
+    }
+
+    // allocate the actual stack
     uint8_t* stk;
     ssize_t  stk_size;
     ssize_t  initial_commit;
     uint8_t* full = mp_gstack_os_alloc(&stk, &stk_size, &initial_commit);
     if (full == NULL) { 
+      mp_free(g);
       errno = ENOMEM;
       return NULL;
-    }
+    }    
     
-    // reserve space at the base for the gstack structure itself.
     uint8_t* base = mp_base(stk, stk_size);
-    ssize_t initial_reserved = mp_gstack_initial_reserved();
-    mp_push(base, initial_reserved, (uint8_t**)&g); //
+    mp_assert_internal((intptr_t)base % 32 == 0);
 
     // initialize with debug 0xFD
     #ifndef NDEBUG
@@ -245,6 +250,7 @@ mp_gstack_t* mp_gstack_alloc(void)
     mp_push(base, initial_commit, &commit_start);
     memset(commit_start, 0xFD, initial_commit);
     #endif
+    
     //mp_trace_message("alloc gstack: full: %p, base: %p, base_limit: %p\n", full, base, mp_push(base, stk_size,NULL));
     g->next = NULL;
     g->full = full;
@@ -252,21 +258,13 @@ mp_gstack_t* mp_gstack_alloc(void)
     g->stack = stk;
     g->stack_size = stk_size;
     g->initial_commit = g->committed = initial_commit;
-    g->initial_reserved = initial_reserved;
+    g->extra_size = extra_size;
   }
 
+  if (extra != NULL && extra_size > 0) {
+    *extra = &g->extra[0];
+  }
   return g;
-}
-
-
-// Pre-reserve space on the stack before entry
-void* mp_gstack_reserve(mp_gstack_t* g, size_t sz) {
-  uint8_t* p;
-  sz = mp_align_up(sz, 16);
-  mp_push(mp_gstack_base_at(g, g->initial_reserved), sz, &p);
-  g->initial_reserved += sz;
-  mp_assert(g->initial_reserved < g->initial_commit);
-  return p;
 }
 
 
@@ -275,7 +273,7 @@ void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fu
   uint8_t* base = mp_gstack_base(g);
   uint8_t* base_commit_limit = mp_push(base, g->committed, NULL);
   uint8_t* base_limit = mp_push(base, g->stack_size, NULL);
-  uint8_t* base_entry_sp = mp_push(base, g->initial_reserved + 16 /* a bit extra */, NULL);
+  uint8_t* base_entry_sp = base;
 #if _WIN32
   if (os_use_gpools || os_gstack_grow_fast) {
     // set an artificially low stack limit so our page fault handler gets called and we:
@@ -307,8 +305,7 @@ void mp_gstack_free(mp_gstack_t* g, bool delay) {
   // otherwise try to put it in our thread local cache...
   if (_mp_gstack_cache_count < os_gstack_cache_max_count) {
     // allowed to cache.
-    // we keep it as-is
-    g->initial_reserved = mp_gstack_initial_reserved();  // reset reserved area    
+    // we keep it as-is    
     g->next = _mp_gstack_cache;
     _mp_gstack_cache = g;
     _mp_gstack_cache_count++;
@@ -317,6 +314,7 @@ void mp_gstack_free(mp_gstack_t* g, bool delay) {
 
   // otherwise free it to the OS
   mp_gstack_os_free(g->full, g->stack, g->stack_size, g->committed);
+  mp_free(g);
 }
 
 
@@ -328,6 +326,7 @@ void mp_gstack_clear_cache(void) {
     mp_gstack_t* next = _mp_gstack_cache = g->next;
     _mp_gstack_cache_count--;
     mp_gstack_os_free(g->full, g->stack, g->stack_size, g->committed);
+    mp_free(g);
     g = next;
   }
   mp_assert_internal(_mp_gstack_cache == NULL);
@@ -340,26 +339,31 @@ void mp_gstack_clear_cache(void) {
 //----------------------------------------------------------------------------------
 
 struct mp_gsave_s {
-  void* stack;
-  size_t  size;
-  uint8_t data[1];
+  void*   stack;
+  ssize_t stack_size;
+  void*   extra;        // mp_prompt_t structure
+  ssize_t extra_size;
+  uint8_t data[1];      // combined data; starts with extra
 };
 
 // save a gstack
 mp_gsave_t* mp_gstack_save(mp_gstack_t* g, uint8_t* sp) {
   mp_assert_internal(mp_gstack_contains(g, sp));
-  uint8_t* base = mp_gstack_base(g);
-  ssize_t size = (os_stack_grows_down ? mp_gstack_base(g) - sp : sp - g->stack);
-  uint8_t* stack = (os_stack_grows_down ? sp : base);
-  mp_gsave_t* gs = (mp_gsave_t*)mp_malloc_safe(sizeof(mp_gsave_t) - 1 + size);
-  gs->stack = stack;
-  gs->size = size;
-  memcpy(gs->data, stack, size);
+  ssize_t stack_size = mp_unpush(sp, g->stack, g->stack_size);
+  mp_assert_internal(stack_size >= 0 && stack_size <= g->stack_size);
+  mp_gsave_t* gs = (mp_gsave_t*)mp_malloc_safe(sizeof(mp_gsave_t) - 1 + stack_size + g->extra_size);
+  gs->stack = (os_stack_grows_down ? sp : g->stack);
+  gs->stack_size = stack_size;
+  gs->extra = &g->extra[0];
+  gs->extra_size = g->extra_size;
+  memcpy(gs->data, gs->extra, gs->extra_size);
+  memcpy(gs->data + gs->extra_size, gs->stack, gs->stack_size);
   return gs;
 }
 
 void mp_gsave_restore(mp_gsave_t* gs) {
-  memcpy(gs->stack, gs->data, gs->size);
+  memcpy(gs->extra, gs->data, gs->extra_size);
+  memcpy(gs->stack, gs->data + gs->extra_size, gs->stack_size);
 }
 
 void mp_gsave_free(mp_gsave_t* gs) {
