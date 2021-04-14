@@ -28,23 +28,22 @@
 typedef enum mp_return_kind_e {
   MP_RETURN,         // normal return
   MP_EXCEPTION,      // return with an exception
-  MP_YIELD_ONCE,     // yield that can be resumed at most once.
-  MP_YIELD_MULTI,    // yield that can be resumed multiple times (or not at all).
+  MP_YIELD,          // yielded up
 } mp_return_kind_t;
 
 
 typedef struct mp_resume_point_s {   // allocated on the suspended stack (which performed a yield)
-  mp_jmpbuf_t      jmp;     
-  void*            result;  // the yield result (= resume argument)
+  mp_jmpbuf_t        jmp;     
+  void*              result;  // the yield result (= resume argument)
 } mp_resume_point_t;
 
 typedef struct mp_return_point_s {   // allocated on the parent stack (which performed an enter/resume)
-  mp_jmpbuf_t      jmp;     // must be the first field (see `mp_stack_enter`)
-  mp_return_kind_t kind;    
-  mp_yield_fun_t*  fun;     // if yielding, the function to execute
-  void*            arg;     // if yielding, the argument to the function; if returning, the result.
+  mp_jmpbuf_t        jmp;     // must be the first field (in order to find unwind information, see `mp_stack_enter`)
+  mp_return_kind_t   kind;    
+  mp_yield_fun_t*    fun;     // if yielding, the function to execute
+  void*              arg;     // if yielding, the argument to the function; if returning, the result.
   #ifdef __cplusplus
-  std::exception_ptr exn;   // returning with an exception to propagate
+  std::exception_ptr exn;     // returning with an exception to propagate
   #endif
 } mp_return_point_t;
 
@@ -120,12 +119,12 @@ static mp_mresume_t* mp_resume_is_multi(mp_resume_t* r) {
 }
 
 // Create a non-allocated at-most-once resumption
-static mp_resume_t* mp_resume_once(mp_prompt_t* p) {
+static mp_resume_t* mp_resume_as_once(mp_prompt_t* p) {
   return (mp_resume_t*)p;
 }
 
 // Create a multi shot resumption
-static mp_resume_t* mp_resume_multi(mp_mresume_t* r) {
+static mp_resume_t* mp_resume_as_multi(mp_mresume_t* r) {
   return (mp_resume_t*)(((intptr_t)r) | 4);
 }
 
@@ -340,25 +339,18 @@ static  void mp_prompt_stack_entry(void* penv, mp_unwind_frame_t* unwind_frame) 
   #endif  
 }
 
+
+
 // Execute the function that is yielded or return normally.
 static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, mp_prompt_t* p) {
   mp_assert_internal(!mp_prompt_is_active(p));
-  if (ret->kind == MP_YIELD_ONCE) {
-    return (ret->fun)(mp_resume_once(p), ret->arg);
+  if (ret->kind == MP_YIELD) {
+    return (ret->fun)(mp_resume_as_once(p), ret->arg);
   }
   else if (ret->kind == MP_RETURN) {
     void* result = ret->arg;
     mp_prompt_drop(p);
     return result;
-  }
-  else if (ret->kind == MP_YIELD_MULTI) {
-    mp_mresume_t* r = mp_malloc_safe_tp(mp_mresume_t);
-    r->prompt = p;
-    r->refcount = 1;
-    r->resume_count = 0;
-    r->save = NULL;
-    r->tail_return_point = p->return_point;
-    return (ret->fun)(mp_resume_multi(r), ret->arg);    
   }
   else {
     #ifdef __cplusplus
@@ -378,6 +370,7 @@ static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
   mp_return_point_t ret;  
   // save our return location for yields and regular return  
   if (mp_setjmp(&ret.jmp)) {
+    //mp_return_label:
     // P: return from yield (YR), or a regular return (RET)
     // printf("%s to prompt %p\n", (ret.kind == MP_RETURN ? "returned" : "yielded"), p);    
     return mp_prompt_exec_yield_fun(&ret, p);  // must be under the setjmp to preserve the stack
@@ -497,13 +490,15 @@ int mp_resume_should_unwind(mp_resume_t* resume) {
 // Yield up to a prompt
 //-----------------------------------------------------------------------
 
-// Yield to a prompt with a certain resumption kind. Once yielded back up, execute `fun(arg)`
-static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
+
+// Yield back to a prompt with a `mp_resume_once_t` resumption and run `fun(arg)` at the yield point
+void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
   mp_assert(mp_prompt_is_ancestor(p));           // can only yield up to an ancestor
   mp_assert_internal(mp_prompt_is_active(p));    // can only yield to an active prompt
   // set our resume point (Y)
   mp_resume_point_t res;
   if (mp_setjmp(&res.jmp)) {
+    //mp_resume_label:
     // Y: resuming with a result (from PR)
     mp_assert_internal(mp_prompt_is_active(p));  // when resuming, we should be active again
     mp_assert_internal(mp_prompt_is_ancestor(p));
@@ -519,19 +514,9 @@ static void* mp_yield_internal(mp_return_kind_t rkind, mp_prompt_t* p, mp_yield_
     mp_return_point_t* ret = mp_prompt_unlink(p, &res, &sp);
     ret->fun = fun;
     ret->arg = arg;
-    ret->kind = rkind;
+    ret->kind = MP_YIELD;
     mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
   }
-}
-
-// Yield back to a prompt with a `mp_resume_once_t` resumption.
-void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
-  return mp_yield_internal(MP_YIELD_ONCE, p, fun, arg);
-}
-
-// Yield back to a prompt with a `mp_resume_t` resumption.
-void* mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
-  return mp_yield_internal(MP_YIELD_MULTI, p, fun, arg);
 }
 
 
@@ -540,12 +525,24 @@ void* mp_yieldm(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
 // General resume's that are first-class (and need allocation)
 //-----------------------------------------------------------------------
 
+// Create a multi-shot resumption from a single-shot one
+mp_resume_t* mp_resume_multi(mp_resume_t* once) {
+  mp_prompt_t* p = mp_resume_is_once(once);
+  if (p == NULL) return once; // already multi-shot
+  mp_mresume_t* r = mp_malloc_safe_tp(mp_mresume_t);
+  r->prompt = p;
+  r->refcount = 1;
+  r->resume_count = 0;
+  r->save = NULL;
+  r->tail_return_point = p->return_point;
+  return mp_resume_as_multi(r);
+}
+
 // Increment the reference count of a resumption.
 static mp_mresume_t* mp_mresume_dup(mp_mresume_t* r) {
   r->refcount++;  
   return r;
 }
-
 
 // Decrement the reference count of a resumption.
 static void mp_mresume_drop(mp_mresume_t* r) {

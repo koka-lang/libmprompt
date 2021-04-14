@@ -266,7 +266,7 @@ static void* mpe_perform_op_clause(mp_resume_t* mpr, void* earg) {
     resume = mpe_malloc_tp(mpe_resume_t);
   }    
   resume->kind = env->rkind;
-  resume->mp.resume = mpr;
+  resume->mp.resume = (env->rkind == MPE_RESUMPTION_MULTI ? mp_resume_multi(mpr) : mpr);
   return (env->opfun)(resume, env->local, env->oparg);
 }
 
@@ -276,9 +276,7 @@ static void* mpe_perform_yield_to(mpe_resumption_kind_t rkind, mpe_frame_handle_
   mpe_frame_top = h->frame.parent;           // and unlink handlers
   mpe_perform_env_t penv = { rkind, op->opfun, h->local, arg };
   // yield up
-  mpe_resume_env_t* renv = (mpe_resume_env_t*)(mpe_likely(rkind < MPE_RESUMPTION_MULTI) 
-                                                ? mp_yield(h->prompt, &mpe_perform_op_clause, &penv)
-                                                : mp_yieldm(h->prompt, &mpe_perform_op_clause, &penv));
+  mpe_resume_env_t* renv = (mpe_resume_env_t*)mp_yield(h->prompt, &mpe_perform_op_clause, &penv);
   // resumed!                     
   h->local = renv->local;           // set new state
   h->frame.parent = mpe_frame_top;  // relink handlers
