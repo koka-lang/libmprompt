@@ -8,7 +8,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 14)
 
 option(MP_USE_C             "Build C versions of the library without exception support" OFF)
-set(mp_version "0.4")
+set(mp_version "0.5")
 
 # all sources are included in one file so we can generate independent libraries and stand-alone object files.
 set(mprompt_sources  src/mprompt/main.c)
