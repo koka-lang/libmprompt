@@ -225,6 +225,7 @@ static bool mp_gstack_os_init(void) {
 #include <winternl.h>
 
 // Extended TIB stucture from _NT_TIB
+// <https://en.wikipedia.org/wiki/Win32_Thread_Information_Block>
 typedef union MP_TIB_S {
   struct {
     struct _EXCEPTION_REGISTRATION_RECORD* ExceptionList;
@@ -236,11 +237,11 @@ typedef union MP_TIB_S {
     struct _NT_TIB* Self;
   };
   struct {
-    uint8_t  padding1[0x1478]; 
+    uint8_t  padding1[0x1478];         // offset 5240
     uint8_t* StackRealLimit;           // "Deallocation limit", the actual reserved size
   };
   struct {
-    uint8_t  padding2[0x1748];
+    uint8_t  padding2[0x1748];         // offset 5960
     size_t   StackGuaranteed;          // Guaranteed available stack during an exception
   };
 } MP_TIB;
