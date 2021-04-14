@@ -75,7 +75,7 @@ static void mp_show_system_error_message(const char* fmt, va_list args) {
     size_t len = strlen(buf);
     FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, NULL, err, 0, buf+len, (DWORD)(sizeof(buf) - len - 1), NULL);
     strcat_s(buf, "\n");
-    mp_fputs(mp_output_handler, "            code : ", buf);
+    mp_fputs(mp_output_handler,  "            code : ", buf);
   }
 }
 #else
@@ -86,7 +86,7 @@ static void mp_show_system_error_message(const char* fmt, va_list args) {
   if (err != 0) {
     char buf[256];
     snprintf(buf, sizeof(buf) - 1, "%d: %s\n", err, strerror(err));
-    mp_fputs(mp_output_handler, "            code : ", buf);
+    mp_fputs(mp_output_handler,  "            code : ", buf);
   }
 }
 #endif

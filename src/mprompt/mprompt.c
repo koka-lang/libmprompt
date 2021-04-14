@@ -282,9 +282,9 @@ static void* mp_return_label;
 static void* mp_resume_label;
 
 
-// Checked Longjmp to a known location
+// Checked longjmp to a known location
 static mp_decl_noreturn void mp_checked_longjmp(void* label, void* sp, mp_jmpbuf_t* jmp) {
-  // security: check if we return the designated label
+  // security: check if we return to the designated label
   if (mp_unlikely(mp_unguard(label) != jmp->reg_ip)) {
     mp_fatal_message(EFAULT, "potential stack corruption detected: expected ip %p, but found %p\n", mp_unguard(label), jmp->reg_ip);
   }

@@ -9,7 +9,7 @@
 #define MP_GSTACK_H
 
 /*------------------------------------------------------------------------------
-   In-place growable gstacks
+   Internal API for in-place growable gstacks
 ------------------------------------------------------------------------------*/
 typedef struct mp_gstack_s mp_gstack_t;
 typedef struct mp_gsave_s  mp_gsave_t;
