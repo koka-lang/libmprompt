@@ -206,7 +206,8 @@ mp_gstack_t* mp_gstack_alloc(ssize_t extra_size, void** extra)
     bool good = (g->extra_size >= extra_size);
     #if !defined(NDEBUG)
     // only use a cached stack if it is under the parent stack (to help unwinding during debugging)
-    good = good && (os_stack_grows_down ? (void*)g < sp : sp < (void*)g);
+    void* stack = g->stack;
+    good = good && (os_stack_grows_down ? stack < sp : sp < stack);
     #endif  
     if (good) {
       if (prev == NULL) { _mp_gstack_cache = g->next; }

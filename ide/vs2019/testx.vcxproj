@@ -35,7 +35,11 @@
     <ClCompile Include="..\..\test\src\reader.c" />
     <ClCompile Include="..\..\test\src\rehandle.c" />
     <ClCompile Include="..\..\test\src\throw.cpp" />
-    <ClCompile Include="..\..\test\test_mpe_main.c" />
+    <ClCompile Include="..\..\test\test_mpe_main.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\..\test\test_mp_async.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>

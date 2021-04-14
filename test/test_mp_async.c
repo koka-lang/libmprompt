@@ -100,6 +100,7 @@ static void async_workers(void) {
     if (i < M) {
       workers[j] = (mp_resume_t*)mp_prompt( &async_worker, NULL );  // (A)
     }
+    //if (j == 0) mpt_printf("%6i todo\n", M + N - i);
   }
   mpt_show_process_info(stdout, start, start_rss);
   size_t total_kb = M * USE_KB;

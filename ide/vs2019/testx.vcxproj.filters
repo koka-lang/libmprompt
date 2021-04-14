@@ -58,5 +58,8 @@
     <ClCompile Include="..\..\test\src\rehandle.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\test\test_mp_async.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
