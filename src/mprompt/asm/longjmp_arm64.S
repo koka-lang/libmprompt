@@ -8,16 +8,14 @@
   - <https://en.wikipedia.org/wiki/Calling_convention#ARM_.28A64.29>
   - <http://infocenter.arm.com/help/topic/com.arm.doc.ihi0055c/IHI0055C_beta_aapcs64.pdf>
 
-  NOTE: currently untested code!!!
-
   Primitives to switch stacks:
  
     typedef uint8_t mp_jmp_buf_t[MP_JMPBUF_SIZE];  // machine word aligned
   
     bool     mp_setjmp ( mp_jmp_buf_t jmp );
     void     mp_longjmp( mp_jmp_buf_t jmp );
-    void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
-                         void (*fun)(void* arg, void* trapframe), void* arg);
+    void*    mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, mp_jmpbuf_t** return_jmp, 
+                            void (*fun)(void* arg, void* trapframe), void* arg);
     
   `mp_stack_enter` enters a fresh stack and runs `fun(arg)`; it also receives 
   a (pointer to a pointer to a) return jmpbuf to which it longjmp's on return.
