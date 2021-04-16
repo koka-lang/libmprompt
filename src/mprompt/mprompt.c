@@ -134,6 +134,7 @@ static mp_resume_t* mp_resume_as_multi(mp_mresume_t* r) {
 //-----------------------------------------------------------------------
 
 void mp_init(const mp_config_t* config) {
+  mp_guard_init();
   mp_gstack_init(config);
 }
 
@@ -282,7 +283,7 @@ static void* mp_return_label;
 static void* mp_resume_label;
 
 
-// Checked longjmp to a known location
+// Checked longjmp to a known location (with a known stack pointer)
 static mp_decl_noreturn void mp_checked_longjmp(void* label, void* sp, mp_jmpbuf_t* jmp) {
   // security: check if we return to the designated label
   if (mp_unlikely(mp_unguard(label) != jmp->reg_ip)) {
@@ -628,9 +629,9 @@ static void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
     return mp_mresume(r, arg);  // resume normally as the return_point may not be preserved correctly
   }
   else {
-    r->tail_return_point = NULL;
+    r->tail_return_point = NULL;                    // todo: do we need `sp` as well?
     r->resume_count++;
-    mp_prompt_t* p = mp_resume_get_prompt(r);
+    mp_prompt_t* p = mp_resume_get_prompt(r);       
     return mp_prompt_resume_tail(p, arg, ret);      // resume tail by reusing the original entry return point
   }
 }
