@@ -51,6 +51,13 @@ typedef ptrdiff_t  ssize_t;
 #define mp_likely(x)            (x)
 #endif
 
+#if defined(__cplusplus)
+#define mp_decl_externc   extern "C"
+#else
+#define mp_decl_externc 
+#endif
+
+
 /*------------------------------------------------------------------------------
   Defines
 ------------------------------------------------------------------------------*/

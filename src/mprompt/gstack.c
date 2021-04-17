@@ -155,10 +155,6 @@ static uint8_t* mp_gstack_base(const mp_gstack_t* g) {
   return mp_gstack_base_at(g, 0);
 }
 
-static ssize_t mp_gstack_initial_reserved(void) {
-  return mp_align_up(sizeof(mp_gstack_t), 16);
-}
-
 
 
 //----------------------------------------------------------------------------------
@@ -352,6 +348,9 @@ struct mp_gsave_s {
 };
 
 // save a gstack
+#if MP_USE_ASAN
+__attribute__((no_sanitize("address")))
+#endif
 mp_gsave_t* mp_gstack_save(mp_gstack_t* g, uint8_t* sp) {
   mp_assert_internal(mp_gstack_contains(g, sp));
   ssize_t stack_size = mp_unpush(sp, g->stack, g->stack_size);
@@ -361,8 +360,13 @@ mp_gsave_t* mp_gstack_save(mp_gstack_t* g, uint8_t* sp) {
   gs->stack_size = stack_size;
   gs->extra = &g->extra[0];
   gs->extra_size = g->extra_size;
-  memcpy(gs->data, gs->extra, gs->extra_size);
-  memcpy(gs->data + gs->extra_size, gs->stack, gs->stack_size);
+  #if MP_USE_ASAN
+    for(ssize_t i = 0; i < gs->extra_size; i++) { gs->data[i] = ((uint8_t*)gs->extra)[i]; }
+    for(ssize_t i = 0; i < gs->stack_size; i++) { gs->data[i + gs->extra_size] = ((uint8_t*)gs->stack)[i]; }
+  #else
+    memcpy(gs->data, gs->extra, gs->extra_size);
+    memcpy(gs->data + gs->extra_size, gs->stack, gs->stack_size);
+  #endif
   return gs;
 }
 
@@ -417,7 +421,6 @@ static void mp_gstack_done(void) {
 }
 
 static void mp_gstack_thread_init(void);  // called from `mp_gstack_init`
-
 
 // Init (called by mp_prompt_init and gstack_alloc)
 bool mp_gstack_init(const mp_config_t* config) {
@@ -514,3 +517,37 @@ static void mp_gstack_thread_init(void) {
   mp_gstack_os_thread_init();  
 }
 
+
+//----------------------------------------------------------------------------------
+// Support address sanitizer
+//----------------------------------------------------------------------------------
+
+#if MP_USE_ASAN
+// sanitize hooks, see: <https://github.com/llvm-mirror/compiler-rt/blob/master/include/sanitizer/common_interface_defs.h>
+mp_decl_externc  void __sanitizer_start_switch_fiber(void** fake_stack_save, const void* bottom, size_t size);
+mp_decl_externc  void __sanitizer_finish_switch_fiber(void* fake_stack_save, const void** bottom_old, size_t* size_old);
+
+static mp_decl_thread const void* system_stack;
+static mp_decl_thread size_t system_stack_size;
+
+void mp_debug_asan_start_switch(const mp_gstack_t* g) {
+  if (g == NULL) {
+    // system stack
+    __sanitizer_start_switch_fiber(NULL, system_stack, system_stack_size);
+  }
+  else {
+    __sanitizer_start_switch_fiber(NULL, g->stack, g->stack_size);
+  }
+}
+
+void mp_debug_asan_end_switch(bool from_system) {
+  const void* old;
+  size_t old_size;
+  __sanitizer_finish_switch_fiber(NULL, &old, &old_size);
+  if (from_system) {
+    system_stack = old;
+    system_stack_size = old_size;
+  }
+}
+
+#endif

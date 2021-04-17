@@ -55,6 +55,7 @@ static void stack_use(intptr_t totalkb) {
   size_t total_pages = ((size_t)totalkb*1024 + page_size - 1) / page_size;
   for (size_t i = 0; i < total_pages; i++) {
     volatile uint8_t b = *(sp - (i * page_size));
+    (void)(b);
   }
 }
 
@@ -102,6 +103,7 @@ static void async_workers(void) {
     }
     //if (j == 0) mpt_printf("%6i todo\n", M + N - i);
   }
+  free(workers);
   mpt_show_process_info(stdout, start, start_rss);
   size_t total_kb = M * USE_KB;
   double total_mb = (double)total_kb / 1024.0;
