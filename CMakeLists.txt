@@ -153,8 +153,7 @@ if((CMAKE_BUILD_TYPE MATCHES "Release") OR ((CMAKE_BUILD_TYPE MATCHES "RelWithDe
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 endif()
 
-set(GNULIKE $<OR:$<C_COMPILER_ID:AppleClang>,$<C_COMPILER_ID:Clang>,$<C_COMPILER_ID:GNU>,$<C_COMPILER_ID:Intel>>)
-if(GNULIKE)
+if (C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel")
   list(APPEND mp_cflags -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
 endif()
 
@@ -242,7 +241,7 @@ set(test_targets test_mpe_main test_mp_async test_mp_example_generator test_mp_e
 # finalize tests
 enable_testing()
 foreach(test_target ${test_targets} )
-  target_compile_options(${test_target} PRIVATE ${mp_cflags} $<${GNULIKE}:-Wno-extra>)
+  target_compile_options(${test_target} PRIVATE ${mp_cflags})
   target_include_directories(${test_target} PRIVATE include test)
   target_link_libraries(${test_target} PRIVATE mpeff)
   add_test( ${test_target} ${test_target})
