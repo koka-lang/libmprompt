@@ -252,10 +252,10 @@ For example:
 ==     @prompt m ((1 + [])[yield m (\k. k 41)])       ; yield back up to `m`, capturing E
 |----> (\k. k 41) (\x. @prompt m (1 + [])[x])         ; continue with the function of the yield
 |----> (\x. @prompt m (1 + [])[x]) 41                 ; resume by applying `k`
-|----> @prompt m ((1 + [])[42])                       ; resumed to the yield with result 42
-==     @prompt m (1 + 42)
-|----> @prompt m 43
-|----> 43
+|----> @prompt m ((1 + [])[41])                       ; resumed to the yield with result 41
+==     @prompt m (1 + 41)
+|----> @prompt m 42
+|----> 42
 ```
 
 In the C implementation, the unique markers `m` are simply
