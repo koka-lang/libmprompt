@@ -94,7 +94,7 @@ Tested on Linux (amd64 and arm64), macOS (amd64), and Windows (amd64).
 We use `cmake` to build:
 
 ```
-> mkdir out/debug    # or out/release
+> mkdir -p out/debug    # or out/release
 > cd out/debug
 > cmake ../..
 > make
