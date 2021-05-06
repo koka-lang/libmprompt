@@ -5,7 +5,7 @@
 # libmprompt
 
 _Note: The library is under development and not yet complete. This library should not be used in production code._  
-Latest release: v0.6, 2021-04-16.
+Latest release: v0.6.1, 2021-05-06.
 
 A 64-bit C/C++ library that aims to implement robust and efficient multi-prompt delimited control. 
 
@@ -49,7 +49,10 @@ Particular aspects:
 - A drawback of our implementation is that it requires 64-bit systems in order to have enough
   virtual address space. Moreover, at miminum 4KiB of memory is committed per 
   (active) prompt. On systems without "overcommit" we use internal _gpools_ to 
-  still be able to commit stack space on-demand using a special signal handler.   
+  still be able to commit stack space on-demand using a special signal handler.
+  (as an aside, using this on 32-bit systems is not entirely out of reach -- if one
+   reserves 2GiB virtual memory for the stacks, we could have ~16000 64KiB stacks 
+   which may well be enough for most applications).   
 
 - We aim to support millions of prompts with fast yielding and resuming. If we run
   the [`mp_async_test1M`](test/main.c#L82) test we simulate an asynchronous
@@ -71,7 +74,8 @@ Enjoy,
   Daan Leijen and KC Sivaramakrishnan.
 
 Releases:
-- 2021-04-16: `v0.6`: improved security further, random initialization of the jump guard.
+- 2021-05-06: `v0.6.1`: build fixes for freeBSD.
+- 2021-04-16: `v0.6`  : improved security further, random initialization of the jump guard.
 - 2021-04-13: `v0.5.4`: improved security against stack buffer overflow, simplify creation of multi-shot resumptions.
 - 2021-04-08: `v0.5.2`: better handling of signals, improved Windows page fault handler.
 - 2021-04-04: `v0.4`: initial support for Linux arm64.
@@ -87,7 +91,7 @@ Releases:
 
 # Building
 
-Tested on Linux (amd64 and arm64), macOS (amd64), and Windows (amd64).
+Tested on Linux (amd64 and arm64), macOS (amd64), Windows (amd64), and freeBSD (amd64).
 
 ## Linux and macOS
 
