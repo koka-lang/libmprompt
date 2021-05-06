@@ -55,7 +55,7 @@ static uint8_t* mp_os_mmap_reserve(size_t size, int prot, bool* zeroed) {
   #if !defined(MAP_STACK)
   # define MAP_STACK  0
   #endif
-  int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_STACK;
+  int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE; // | MAP_STACK;  // using `MAP_STACK` gives errors on freeBSD
   #if !defined(MAP_UNINITIALIZED)
   if (zeroed != NULL) {
     *zeroed = true;
