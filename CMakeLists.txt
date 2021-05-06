@@ -56,6 +56,7 @@ list(APPEND test_sources
 
 set(mp_cflags)
 set(mp_install_dir)
+set(mp_libs)
 
 # -----------------------------------------------------------------------------
 # C or C++ (default)
@@ -152,6 +153,13 @@ if (CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel|ARMClang|ARMCC")
   set_source_files_properties(${mprompt_asm_source} PROPERTIES COMPILE_FLAGS "-x assembler-with-cpp")
 endif()
 
+if (NOT WIN32)
+  list(APPEND mp_libs pthread)
+  if (SYSTEM_NAME STREQUAL "FreeBSD")
+    list(APPEND mp_libs execinfo)
+  endif()
+endif()
+
 
 message(STATUS "")
 message(STATUS "Libraries : lib${mp_mprompt_name}, lib${mp_mpeff_name}")
@@ -161,6 +169,7 @@ if(MP_USE_C)
 else()
   message(STATUS "Compiler  : ${CMAKE_CXX_COMPILER} ${mp_cflags}")
 endif()
+message(STATUS "Link with : ${mp_libs}")
 message(STATUS "")
 
 
@@ -179,7 +188,7 @@ target_include_directories(mprompt PUBLIC
     $<INSTALL_INTERFACE:${mp_install_dir}/include>
 )
 if (NOT WIN32)
-  target_link_libraries(mprompt PUBLIC pthread)
+  target_link_libraries(mprompt PUBLIC ${mp_libs})
 endif()
 if (APPLE)  
   # target_link_options(mprompt PUBLIC -Wl,-no_compact_unwind -Wl,-keep_dwarf_unwind)
@@ -197,7 +206,7 @@ target_include_directories(mpeff PUBLIC
     $<INSTALL_INTERFACE:${mp_install_dir}/include>
 )
 if (NOT WIN32)
-  target_link_libraries(mpeff PUBLIC pthread)
+  target_link_libraries(mpeff PUBLIC ${mp_libs})
 endif()
 
 
