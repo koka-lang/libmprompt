@@ -59,6 +59,7 @@ list(APPEND test_sources
 
 set(mp_cflags)
 set(mp_install_dir)
+set(mp_libs)
 
 # -----------------------------------------------------------------------------
 # C or C++ (default)
@@ -172,6 +173,14 @@ if (NOT MP_USE_C)
 endif()
 
 
+if (NOT WIN32)
+  list(APPEND mp_libs pthread)
+  find_library(mp_execinfo NAMES execinfo)  
+  if (mp_execinfo)                            # on freeBSD
+    list(APPEND mp_libs execinfo)
+  endif()
+endif()
+
 
 # -----------------------------------------------------------------------------
 # Overview
@@ -186,6 +195,7 @@ else()
   message(STATUS "Compiler  : ${CMAKE_CXX_COMPILER}")
 endif()
 message(STATUS   "            ${mp_cflags}")
+message(STATUS   "Link with : ${mp_libs}")
 message(STATUS "")
 
 
@@ -204,7 +214,7 @@ target_include_directories(mprompt PUBLIC
     $<INSTALL_INTERFACE:${mp_install_dir}/include>
 )
 if (NOT WIN32)
-  target_link_libraries(mprompt PUBLIC pthread)
+  target_link_libraries(mprompt PUBLIC ${mp_libs})
 endif()
 if (APPLE)  
   # target_link_options(mprompt PUBLIC -Wl,-no_compact_unwind -Wl,-keep_dwarf_unwind)
@@ -222,7 +232,7 @@ target_include_directories(mpeff PUBLIC
     $<INSTALL_INTERFACE:${mp_install_dir}/include>
 )
 if (NOT WIN32)
-  target_link_libraries(mpeff PUBLIC pthread)
+  target_link_libraries(mpeff PUBLIC ${mp_libs})
 endif()
 
 
