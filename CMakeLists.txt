@@ -155,7 +155,8 @@ endif()
 
 if (NOT WIN32)
   list(APPEND mp_libs pthread)
-  if (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+  find_library(mp_execinfo NAMES execinfo)  
+  if (mp_execinfo)                            # on freeBSD
     list(APPEND mp_libs execinfo)
   endif()
 endif()
