@@ -50,6 +50,7 @@ static void async_workers(void) {
     }
   }
   printf("ran %zd workers\n", count);
+  free(workers);
 }
 
 int main() {

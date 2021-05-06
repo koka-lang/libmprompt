@@ -51,6 +51,13 @@ typedef ptrdiff_t  ssize_t;
 #define mp_likely(x)            (x)
 #endif
 
+#if defined(__cplusplus)
+#define mp_decl_externc   extern "C"
+#else
+#define mp_decl_externc 
+#endif
+
+
 /*------------------------------------------------------------------------------
   Defines
 ------------------------------------------------------------------------------*/
@@ -104,20 +111,20 @@ static inline ssize_t mp_min(ssize_t x, ssize_t y) {
 
 
 /*------------------------------------------------------------------------------
-  Stack guards (todo)
+  Guard cookie; used to encode ip and sp in a longjmp
 ------------------------------------------------------------------------------*/
-
-static inline uintptr_t mp_guard_cookie(void) {
-  return (uintptr_t)0; // no randomness for now
-}
+extern uintptr_t mp_guard_cookie;
 
 static inline void* mp_guard(void* p) {
-  return (void*)((uintptr_t)p ^ mp_guard_cookie());
+  return (void*)((uintptr_t)p ^ mp_guard_cookie);
 }
 
 static inline void* mp_unguard(void* p) {
-  return (void*)((uintptr_t)p ^ mp_guard_cookie());
+  return (void*)((uintptr_t)p ^ mp_guard_cookie);
 }
+
+void mp_guard_init(void);
+
 
 /*------------------------------------------------------------------------------
   Malloc interface (to facilitate replacing malloc)

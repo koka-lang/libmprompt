@@ -1,13 +1,16 @@
 # -----------------------------------------------------------------------------
 # Copyright (c) 2021, Microsoft Research, Daan Leijen
 # -----------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.12)
 project(libmprompt C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 14)
 
 option(MP_USE_C             "Build C versions of the library without exception support" OFF)
+option(MP_DEBUG_UBSAN       "Build with undefined behaviour sanitizer" OFF)
+option(MP_DEBUG_ASAN        "Build with address sanitizer" OFF)
+
 set(mp_version "0.6")
 
 # all sources are included in one file so we can generate independent libraries and stand-alone object files.
@@ -79,13 +82,6 @@ else()
   SET_SOURCE_FILES_PROPERTIES(${mprompt_sources} PROPERTIES LANGUAGE CXX )
   SET_SOURCE_FILES_PROPERTIES(${mpeff_sources} PROPERTIES LANGUAGE CXX )
   SET_SOURCE_FILES_PROPERTIES(${test_sources} PROPERTIES LANGUAGE CXX )
-  
-  if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
-    list(APPEND mp_cflags -Wno-deprecated)
-  endif()
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
-    list(APPEND mp_cflags -Kc++)
-  endif()
 endif()
 
 
@@ -119,12 +115,34 @@ endif()
 # -----------------------------------------------------------------------------
 
 if (NOT CMAKE_BUILD_TYPE)
-  if ("${CMAKE_BINARY_DIR}" MATCHES ".*(D|d)ebug$")
+  if ("${CMAKE_BINARY_DIR}" MATCHES ".*(Debug|debug|ubsan|tsan|asan)$")
     message(STATUS "No build type selected, default to: Debug")
     set(CMAKE_BUILD_TYPE "Debug")
   else()
     message(STATUS "No build type selected, default to: Release")
     set(CMAKE_BUILD_TYPE "Release")
+  endif()
+endif()
+
+
+# -----------------------------------------------------------------------------
+# Sanitizers
+# -----------------------------------------------------------------------------
+
+if(MP_DEBUG_UBSAN OR MP_DEBUG_ASAN)
+  if(NOT MP_USE_C AND (CMAKE_BUILD_TYPE MATCHES "Debug") AND (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+    set(mp_san)
+    if (MP_DEBUG_UBSAN)
+      list(APPEND mp_san "undefined")
+    endif()
+    if (MP_DEBUG_ASAN)
+      list(APPEND mp_san "address")
+    endif()
+    list(JOIN mp_san "," mp_san)
+    list(APPEND mp_cflags -fsanitize=${mp_san})
+    list(APPEND CMAKE_EXE_LINKER_FLAGS -fsanitize=${mp_san})
+  else()
+    message(WARNING "Can only use sanitizer with a clang++ debug build (currently: ${CMAKE_CXX_COMPILER_ID}, CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}, MP_USE_C=${MP_USE_C})")
   endif()
 endif()
 
@@ -136,8 +154,7 @@ if((CMAKE_BUILD_TYPE MATCHES "Release") OR ((CMAKE_BUILD_TYPE MATCHES "RelWithDe
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 endif()
 
-set(GNULIKE $<OR:$<C_COMPILER_ID:AppleClang>,$<C_COMPILER_ID:Clang>,$<C_COMPILER_ID:GNU>,$<C_COMPILER_ID:Intel>>)
-if($GNULIKE)
+if (C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel")
   list(APPEND mp_cflags -Wall -Wextra -Wno-unknown-pragmas -fvisibility=hidden)
 endif()
 
@@ -145,13 +162,16 @@ if(APPLE)
   # list(APPEND mp_cflags -fasynchronous-unwind-tables)
 endif()
 
-if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
-  list(APPEND mp_cflags -EHa)   # needed for reliable calling of destructors
+# treat C extension as C++
+if (NOT MP_USE_C)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
+    list(APPEND mp_cflags -Wno-deprecated)
+  endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
+    list(APPEND mp_cflags -Kc++)
+  endif()
 endif()
 
-if (CMAKE_C_COMPILER_ID MATCHES "AppleClang|Clang|GNU|Intel|ARMClang|ARMCC")
-  set_source_files_properties(${mprompt_asm_source} PROPERTIES COMPILE_FLAGS "-x assembler-with-cpp")
-endif()
 
 if (NOT WIN32)
   list(APPEND mp_libs pthread)
@@ -162,15 +182,20 @@ if (NOT WIN32)
 endif()
 
 
+# -----------------------------------------------------------------------------
+# Overview
+# -----------------------------------------------------------------------------
+
 message(STATUS "")
-message(STATUS "Libraries : lib${mp_mprompt_name}, lib${mp_mpeff_name}")
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS   "Libraries : lib${mp_mprompt_name}, lib${mp_mpeff_name}")
+message(STATUS   "Build type: ${CMAKE_BUILD_TYPE}")
 if(MP_USE_C)
-  message(STATUS "Compiler  : ${CMAKE_C_COMPILER} ${mp_cflags}")
+  message(STATUS "Compiler  : ${CMAKE_C_COMPILER}")
 else()
-  message(STATUS "Compiler  : ${CMAKE_CXX_COMPILER} ${mp_cflags}")
+  message(STATUS "Compiler  : ${CMAKE_CXX_COMPILER}")
 endif()
-message(STATUS "Link with : ${mp_libs}")
+message(STATUS   "            ${mp_cflags}")
+message(STATUS   "Link with : ${mp_libs}")
 message(STATUS "")
 
 
@@ -226,7 +251,7 @@ set(test_targets test_mpe_main test_mp_async test_mp_example_generator test_mp_e
 # finalize tests
 enable_testing()
 foreach(test_target ${test_targets} )
-  target_compile_options(${test_target} PRIVATE ${mp_cflags} $<${GNULIKE}:-Wno-extra>)
+  target_compile_options(${test_target} PRIVATE ${mp_cflags})
   target_include_directories(${test_target} PRIVATE include test)
   target_link_libraries(${test_target} PRIVATE mpeff)
   add_test( ${test_target} ${test_target})

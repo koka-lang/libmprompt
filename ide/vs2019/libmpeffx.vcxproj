@@ -74,6 +74,8 @@
       <AdditionalIncludeDirectories>..\..\include;</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <CompileAs>CompileAsCpp</CompileAs>
+      <ControlFlowGuard>Guard</ControlFlowGuard>
+      <GuardEHContMetadata>true</GuardEHContMetadata>
     </ClCompile>
     <Link>
       <SubSystem>

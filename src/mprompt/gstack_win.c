@@ -20,8 +20,6 @@ static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* avai
 static bool     mp_win_initial_commit(uint8_t* stk, ssize_t stk_size, ssize_t* initial_commit, bool commit_initial);
 static void     mp_win_trace_stack_layout(uint8_t* base, uint8_t* xbase_limit);
 
-static const char* mp_system_error_message(int errno, const char* fmt, ...);
-
 // Reserve memory
 // we use a hint address in windows to try to stay under the system stack for better backtraces
 static _Atomic(ssize_t) mp_os_reserve_hint;
@@ -205,7 +203,7 @@ static bool mp_gstack_os_init(void) {
   // guard pages to grow into the gaps in a gpool (as that is one contiguous reserved space)  
   // Moreover, we always need this handler to guarantee enough stack space 
   // during C++ exception handling: it seems the system will only grow the system
-  // stack automatically during an exception and now our gstacks.
+  // stack automatically during an exception and not our gstacks.
   PVOID handler = AddVectoredExceptionHandler(1, &mp_gstack_win_page_fault);
   if (handler == NULL) {
     mp_system_error_message(EINVAL, "unable to install page fault handler -- fall back to guarded demand paging\n");
@@ -227,18 +225,25 @@ static bool mp_gstack_os_init(void) {
 #include <winternl.h>
 
 // Extended TIB stucture from _NT_TIB
-typedef struct MP_TIB_S {
-  struct _EXCEPTION_REGISTRATION_RECORD* ExceptionList;
-  uint8_t* StackBase;                // bottom of the stack (highest address)
-  uint8_t* StackLimit;               // commit limit (points to the top of the guard page)
-  PVOID    SubSystemTib;
-  PVOID    FiberData;
-  PVOID    ArbitraryUserPointer;
-  struct _NT_TIB* Self;
-  PVOID    padding1[(0x1478 - 7*sizeof(PVOID))/sizeof(PVOID)];
-  uint8_t* StackRealLimit;           // "Deallocation limit", the actual reserved size
-  PVOID    padding2[(0x1748 - sizeof(PVOID) - 0x1478 - 7*sizeof(PVOID))/sizeof(PVOID)];
-  size_t   StackGuaranteed;          // Guaranteed available stack during an exception
+// <https://en.wikipedia.org/wiki/Win32_Thread_Information_Block>
+typedef union MP_TIB_S {
+  struct {
+    struct _EXCEPTION_REGISTRATION_RECORD* ExceptionList;
+    uint8_t* StackBase;                // bottom of the stack (highest address)
+    uint8_t* StackLimit;               // commit limit (points to the top of the guard page)
+    PVOID    SubSystemTib;
+    PVOID    FiberData;
+    PVOID    ArbitraryUserPointer;
+    struct _NT_TIB* Self;
+  };
+  struct {
+    uint8_t  padding1[0x1478];         // offset 5240
+    uint8_t* StackRealLimit;           // "Deallocation limit", the actual reserved size
+  };
+  struct {
+    uint8_t  padding2[0x1748];         // offset 5960
+    size_t   StackGuaranteed;          // Guaranteed available stack during an exception
+  };
 } MP_TIB;
 
 
@@ -280,7 +285,7 @@ static uint8_t* mp_win_get_stack_extent(ssize_t* commit_available, ssize_t* avai
 
 // Guard page fault handler: generally not required as Windows already grows stacks with a guard
 // page automatically; we use it to: 
-// 1. grow the stack quadratically for performance 
+// 1. grow the stack by doubling for performance 
 // 2. prevent gpool gstack from growing into gaps (since a gpool is a contiguous reserved area)
 // We do this by artificially limiting the `StackRealLimit` in the TIB which triggers the fault handler. 
 //

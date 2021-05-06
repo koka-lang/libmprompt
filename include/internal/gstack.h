@@ -9,7 +9,7 @@
 #define MP_GSTACK_H
 
 /*------------------------------------------------------------------------------
-   In-place growable gstacks
+   Internal API for in-place growable gstacks
 ------------------------------------------------------------------------------*/
 typedef struct mp_gstack_s mp_gstack_t;
 typedef struct mp_gsave_s  mp_gsave_t;
@@ -26,5 +26,30 @@ void         mp_gsave_restore(mp_gsave_t* gsave);
 void         mp_gsave_free(mp_gsave_t* gsave);
 
 mp_gstack_t* mp_gstack_current(void);             // implemented in <mprompt.c>
+
+
+
+/*------------------------------------------------------------------------------
+  Support address sanitizer
+------------------------------------------------------------------------------*/
+
+#if defined(__has_feature) 
+#if __has_feature(address_sanitizer)
+#define MP_USE_ASAN 1
+#endif
+#endif
+
+#if !defined(MP_USE_ASAN)
+#define MP_USE_ASAN 0
+#endif
+
+#if MP_USE_ASAN
+void mp_debug_asan_start_switch(const mp_gstack_t* g);
+void mp_debug_asan_end_switch(bool from_system);
+#else
+static inline void mp_debug_asan_start_switch(const mp_gstack_t* g) { MP_UNUSED(g); };
+static inline void mp_debug_asan_end_switch(bool from_system)       { MP_UNUSED(from_system); };
+#endif
+
 
 #endif

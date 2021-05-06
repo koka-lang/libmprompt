@@ -421,7 +421,7 @@ static mpe_decl_noinline void* mpe_handle_start(mp_prompt_t* prompt, void* earg)
   h.local = env->local;  
   h.frame.effect = env->hdef->effect;
   void* result = NULL;
-  #if MPE_HAS_TRY
+  #if MPE_HAS_TRY 
   try {  // catch unwind exceptions
   #endif
     // push frame on top
@@ -429,6 +429,10 @@ static mpe_decl_noinline void* mpe_handle_start(mp_prompt_t* prompt, void* earg)
       // and call the action
       result = (env->body)(env->arg);
     }}
+    // potentially run return function
+    if (h.hdef->resultfun != NULL) {
+      result = h.hdef->resultfun(h.local, result);
+    }
   #if MPE_HAS_TRY
   }   // handle unwind exceptions
   catch (const mpe_unwind_exception& e) {
@@ -437,13 +441,9 @@ static mpe_decl_noinline void* mpe_handle_start(mp_prompt_t* prompt, void* earg)
       throw;  // rethrow 
     }
     //fprintf(stderr, "catch unwind\n");
-    return mpe_perform_yield_to_abort(e.target, e.op, e.arg);  // yield to ourselves (exiting this prompt)
+    result = (e.op->opfun)(NULL, h.local, e.arg); // or yield to ourselves; (but must be done outside the catch or otherwise the exception leaks memory)
   }
   #endif
-  // potentially run return function
-  if (h.hdef->resultfun != NULL) {
-    result = h.hdef->resultfun(h.local, result);
-  }
   return result;
 }
 

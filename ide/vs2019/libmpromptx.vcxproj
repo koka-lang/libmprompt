@@ -93,6 +93,8 @@
       <ExceptionHandling>Async</ExceptionHandling>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <LanguageStandard>stdcpp14</LanguageStandard>
+      <ControlFlowGuard>Guard</ControlFlowGuard>
+      <GuardEHContMetadata>true</GuardEHContMetadata>
     </ClCompile>
     <Link>
       <SubSystem>

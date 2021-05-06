@@ -31,7 +31,7 @@
 typedef struct mp_jmpbuf_s mp_jmpbuf_t;
 
 // On some platforms (like windows) we need an unwind frame on the stack that 
-// is updated inplace when the return_point changes so unwinding can find the right return address.
+// is updated inplace when the return_point changes so backtraces go to the right return address.
 typedef struct mp_unwind_frame_s mp_unwind_frame_t;
 static inline void mp_unwind_frame_update(mp_unwind_frame_t* tf, mp_jmpbuf_t* jmp);
 
@@ -40,12 +40,13 @@ typedef void (mp_stack_start_fun_t)(void* arg, mp_unwind_frame_t* unwind_frame);
 
 
 // Primitive functions in assembler 
-// note: do not mark `mp_stack_enter` as _noreturn_ or otherwise the backtrace will be wrong in gdb.
+// note: do not mark `mp_stack_enter` as _noreturn_ or otherwise the backtrace will be wrong with gcc+gdb
+// (as gcc will cut any the instructions after the call to `mp_stack_enter` which will have the return address
+//  in `mp_stack_enter` point just beyond that into any instructions/fuction that follows the original call).
 mp_decl_externc mp_decl_returns_twice  void* mp_setjmp(mp_jmpbuf_t* save_jmp);
 mp_decl_externc mp_decl_noreturn       void  mp_longjmp(mp_jmpbuf_t* jmp);
-mp_decl_externc                        void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, 
-                                                            mp_jmpbuf_t** return_jmp,
-                                                            mp_stack_start_fun_t* fun, void* arg);
+mp_decl_externc void* mp_stack_enter(void* stack_base, void* stack_commit_limit, void* stack_limit, 
+                                     mp_jmpbuf_t** return_jmp, mp_stack_start_fun_t* fun, void* arg);
 
 
 
@@ -89,8 +90,9 @@ struct mp_jmpbuf_s {
   uint16_t  context_padding;
 };
 
-// On windows we do not have dwarf expressions and need to update the return address
-// and stack pointer on the stack via the unwind frame.
+// On windows we do not have dwarf expressions and update the return address
+// and stack pointer on the stack via the unwind frame. (note: this is just for
+// the debugger; we never actually return this way but always longjmp out of it)
 #define MP_UNWIND_FRAME_DEFINED  (1)
 #define MP_WIN_USE_TRAP_FRAME    (1)
 #if MP_WIN_USE_TRAP_FRAME

@@ -183,6 +183,15 @@ static inline void blist_free(blist xs) {
   }
 }
 
+static inline void blists_free(blist xs) {
+  while (xs != NULL) {
+    blist next = xs->next;
+    blist_free(mpe_blist_voidp(xs->value));
+    free(xs);
+    xs = next;
+  }
+}
+
 static inline long blist_length(blist xs) {
   long count = 0;
   while (xs != NULL) {

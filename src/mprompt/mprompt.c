@@ -134,6 +134,7 @@ static mp_resume_t* mp_resume_as_multi(mp_mresume_t* r) {
 //-----------------------------------------------------------------------
 
 void mp_init(const mp_config_t* config) {
+  mp_guard_init();
   mp_gstack_init(config);
 }
 
@@ -249,6 +250,7 @@ static inline mp_resume_point_t* mp_prompt_link(mp_prompt_t* p, mp_return_point_
     mp_unwind_frame_update(p->unwind_frame, &ret->jmp);
   }                           
   mp_assert_internal(mp_prompt_is_active(p));  
+  mp_debug_asan_start_switch(_mp_prompt_top->gstack);
   return p->resume_point;
 }
 
@@ -266,6 +268,7 @@ static inline mp_return_point_t* mp_prompt_unlink(mp_prompt_t* p, mp_resume_poin
   }
   // note: leave return_point as-is for potential reuse in tail resumes
   mp_assert_internal(!mp_prompt_is_active(p));
+  mp_debug_asan_start_switch(_mp_prompt_top == NULL ? NULL : _mp_prompt_top->gstack);
   return p->return_point;
 }
 
@@ -282,9 +285,9 @@ static void* mp_return_label;
 static void* mp_resume_label;
 
 
-// Checked Longjmp to a known location
+// Checked longjmp to a known location (with a known stack pointer)
 static mp_decl_noreturn void mp_checked_longjmp(void* label, void* sp, mp_jmpbuf_t* jmp) {
-  // security: check if we return the designated label
+  // security: check if we return to the designated label
   if (mp_unlikely(mp_unguard(label) != jmp->reg_ip)) {
     mp_fatal_message(EFAULT, "potential stack corruption detected: expected ip %p, but found %p\n", mp_unguard(label), jmp->reg_ip);
   }
@@ -312,31 +315,31 @@ static  void mp_prompt_stack_entry(void* penv, mp_unwind_frame_t* unwind_frame) 
   mp_entry_env_t* env = (mp_entry_env_t*)penv;
   mp_prompt_t* p = env->prompt;
   p->unwind_frame = unwind_frame;
+  mp_debug_asan_end_switch(p->parent==NULL);
   //mp_prompt_stack_entry(p, env->fun, env->arg);
+  void* sp;
+  mp_return_point_t* ret;
   #ifdef __cplusplus
   try {
   #endif
     void* result = (env->fun)(p, env->arg);
     // RET: return from a prompt
-    void* sp;
-    mp_return_point_t* ret = mp_prompt_unlink(p, NULL, &sp);
+    ret = mp_prompt_unlink(p, NULL, &sp);
     ret->arg = result;
     ret->fun = NULL;
-    ret->kind = MP_RETURN;
-    mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
+    ret->kind = MP_RETURN;    
   #ifdef __cplusplus
   }
   catch (...) {
     mp_trace_message("catch exception to propagate across the prompt %p..\n", p);
-    void* sp;
-    mp_return_point_t* ret = mp_prompt_unlink(p, NULL, &sp);
+    ret = mp_prompt_unlink(p, NULL, &sp);
     ret->exn = std::current_exception();
     ret->arg = NULL;
     ret->fun = NULL;
     ret->kind = MP_EXCEPTION;
-    mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
   }
   #endif  
+  mp_checked_longjmp(mp_return_label, sp, &ret->jmp);
 }
 
 
@@ -367,12 +370,13 @@ static mp_decl_noinline void* mp_prompt_exec_yield_fun(mp_return_point_t* ret, m
 
 // Resume a prompt: used for the initial entry as well as for resuming in a suspended prompt.
 static mp_decl_noinline void* mp_prompt_resume(mp_prompt_t * p, void* arg) {
-  mp_return_point_t ret;  
+  mp_return_point_t ret;    
   // save our return location for yields and regular return  
   if (mp_setjmp(&ret.jmp)) {
     //mp_return_label:
     // P: return from yield (YR), or a regular return (RET)
     // printf("%s to prompt %p\n", (ret.kind == MP_RETURN ? "returned" : "yielded"), p);    
+    mp_debug_asan_end_switch(false);
     return mp_prompt_exec_yield_fun(&ret, p);  // must be under the setjmp to preserve the stack
   }
   else {
@@ -502,6 +506,7 @@ void* mp_yield(mp_prompt_t* p, mp_yield_fun_t* fun, void* arg) {
     // Y: resuming with a result (from PR)
     mp_assert_internal(mp_prompt_is_active(p));  // when resuming, we should be active again
     mp_assert_internal(mp_prompt_is_ancestor(p));
+    mp_debug_asan_end_switch(p->parent==NULL);
     return res.result;
   }
   else {
@@ -628,9 +633,9 @@ static void* mp_mresume_tail(mp_mresume_t* r, void* arg) {
     return mp_mresume(r, arg);  // resume normally as the return_point may not be preserved correctly
   }
   else {
-    r->tail_return_point = NULL;
+    r->tail_return_point = NULL;                    // todo: do we need `sp` as well?
     r->resume_count++;
-    mp_prompt_t* p = mp_resume_get_prompt(r);
+    mp_prompt_t* p = mp_resume_get_prompt(r);       
     return mp_prompt_resume_tail(p, arg, ret);      // resume tail by reusing the original entry return point
   }
 }

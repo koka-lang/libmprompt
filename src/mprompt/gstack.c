@@ -25,8 +25,11 @@
    Growable stacklets
 ------------------------------------------------------------------------------*/
 
-// stack info; located just before the base of the stack
-// all sizes except for initial_reserved are `os_page_size` aligned.
+// Stack info. 
+// For security we allocate this separately from the actual stack.
+// To save an allocation, we reserve `extra_size` space where the 
+// `mp_prompt_t` information will be.
+// All sizes (except for `extra_size`) are `os_page_size` aligned.
 struct mp_gstack_s {
   mp_gstack_t*  next;               // used for the cache and delay list
   uint8_t*      full;               // stack reserved memory (including noaccess gaps)
@@ -60,13 +63,13 @@ static bool    os_gstack_grow_fast        = true;          // use doubling to gr
 static ssize_t os_gstack_cache_max_count  = 4;             // number of prompts to keep in the thread local cache
 static ssize_t os_gstack_exn_guaranteed   = 32 * MP_KIB;   // guaranteed stack size available during an exception unwind (only used on Windows)
 
-#if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be lower than the system stack)
+#if defined(_MSC_VER) && !defined(NDEBUG)  // gpool a tad smaller in msvc so debug traces work (as the gpool can be placed lower than the system stack)
 static ssize_t os_gpool_max_size          = 16 * MP_GIB;   // virtual size of one gstack pooled area (holds about 2^15 gstacks)
 #else
 static ssize_t os_gpool_max_size          = 256 * MP_GIB;  // virtual size of one gstack pooled area (holds about 2^15 gstacks)
 #endif
 
-// Find base of an area in the stack
+// Find base of an area in the stack (we use "base" as the logical bottom of the stack).
 static uint8_t* mp_base(uint8_t* sp, ssize_t size) {
   return (os_stack_grows_down ? sp + size : sp);
 }
@@ -152,10 +155,6 @@ static uint8_t* mp_gstack_base(const mp_gstack_t* g) {
   return mp_gstack_base_at(g, 0);
 }
 
-static ssize_t mp_gstack_initial_reserved(void) {
-  return mp_align_up(sizeof(mp_gstack_t), 16);
-}
-
 
 
 //----------------------------------------------------------------------------------
@@ -168,15 +167,16 @@ static mp_decl_thread mp_gstack_t* _mp_gstack_cache;
 static mp_decl_thread ssize_t      _mp_gstack_cache_count;
 
 
-// We have a delayed free list to keep gstacks alive during exception unwinding
-// it is cleared when: 1. another gstack is allocated, 2. clear_cache is called, 3. the thread terminates
+// We also have a delayed free list to keep gstacks alive during exception unwinding
+// (since some exception implementations allocate exception information in stack areas that are already unwound)
+// it is cleared when either: 1. another gstack is allocated, 2. clear_cache is called, 3. the thread terminates
 static mp_decl_thread mp_gstack_t* _mp_gstack_delayed_free;
 
 static void mp_gstack_clear_delayed(void) {
   if (_mp_gstack_delayed_free == NULL) return;
   #ifdef __cplusplus
   if (std::uncaught_exception()) {
-    return; // don't clear while exceptions are active
+    return; // don't clear while exception unwinding is active
   }
   #endif
   mp_gstack_t* g = _mp_gstack_delayed_free;
@@ -277,9 +277,9 @@ void mp_gstack_enter(mp_gstack_t* g, mp_jmpbuf_t** return_jmp, mp_stack_start_fu
   uint8_t* base_entry_sp = base;
 #if _WIN32
   if (os_use_gpools || os_gstack_grow_fast) {
-    // set an artificially low stack limit so our page fault handler gets called and we:
-    // - gpools: prevent guard pages from growing into a gap
-    // - can keep track of the committed area and grow by doubling to improve performance.
+    // set an artificially low stack limit so our page fault handler gets called and we can:
+    // - prevent guard pages from growing into a gap in gpools
+    // - keep track of the committed area and grow by doubling to improve performance.
     ULONG guaranteed = 0;
     SetThreadStackGuarantee(&guaranteed);
     ssize_t guard_size = os_page_size + mp_align_up(guaranteed, os_page_size);
@@ -348,6 +348,9 @@ struct mp_gsave_s {
 };
 
 // save a gstack
+#if MP_USE_ASAN
+__attribute__((no_sanitize("address")))
+#endif
 mp_gsave_t* mp_gstack_save(mp_gstack_t* g, uint8_t* sp) {
   mp_assert_internal(mp_gstack_contains(g, sp));
   ssize_t stack_size = mp_unpush(sp, g->stack, g->stack_size);
@@ -357,8 +360,13 @@ mp_gsave_t* mp_gstack_save(mp_gstack_t* g, uint8_t* sp) {
   gs->stack_size = stack_size;
   gs->extra = &g->extra[0];
   gs->extra_size = g->extra_size;
-  memcpy(gs->data, gs->extra, gs->extra_size);
-  memcpy(gs->data + gs->extra_size, gs->stack, gs->stack_size);
+  #if MP_USE_ASAN
+    for(ssize_t i = 0; i < gs->extra_size; i++) { gs->data[i] = ((uint8_t*)gs->extra)[i]; }
+    for(ssize_t i = 0; i < gs->stack_size; i++) { gs->data[i + gs->extra_size] = ((uint8_t*)gs->stack)[i]; }
+  #else
+    memcpy(gs->data, gs->extra, gs->extra_size);
+    memcpy(gs->data + gs->extra_size, gs->stack, gs->stack_size);
+  #endif
   return gs;
 }
 
@@ -371,6 +379,10 @@ void mp_gsave_free(mp_gsave_t* gs) {
   mp_free(gs);
 }
 
+
+//----------------------------------------------------------------------------------
+// Is an address located in a gstack?
+//----------------------------------------------------------------------------------
 
 static mp_access_t mp_gstack_check_access(mp_gstack_t* g, void* address, ssize_t* stack_size, ssize_t* available, ssize_t* commit_available) {
   // todo: guard against buffer overflow changing the gstack fields
@@ -398,11 +410,10 @@ static mp_access_t mp_gstack_check_access(mp_gstack_t* g, void* address, ssize_t
   }  
 }
 
+
 //----------------------------------------------------------------------------------
 // Initialization
 //----------------------------------------------------------------------------------
-
-
 
 // Done (called automatically)
 static void mp_gstack_done(void) {  
@@ -410,7 +421,6 @@ static void mp_gstack_done(void) {
 }
 
 static void mp_gstack_thread_init(void);  // called from `mp_gstack_init`
-
 
 // Init (called by mp_prompt_init and gstack_alloc)
 bool mp_gstack_init(const mp_config_t* config) {
@@ -507,3 +517,37 @@ static void mp_gstack_thread_init(void) {
   mp_gstack_os_thread_init();  
 }
 
+
+//----------------------------------------------------------------------------------
+// Support address sanitizer
+//----------------------------------------------------------------------------------
+
+#if MP_USE_ASAN
+// sanitize hooks, see: <https://github.com/llvm-mirror/compiler-rt/blob/master/include/sanitizer/common_interface_defs.h>
+mp_decl_externc  void __sanitizer_start_switch_fiber(void** fake_stack_save, const void* bottom, size_t size);
+mp_decl_externc  void __sanitizer_finish_switch_fiber(void* fake_stack_save, const void** bottom_old, size_t* size_old);
+
+static mp_decl_thread const void* system_stack;
+static mp_decl_thread size_t system_stack_size;
+
+void mp_debug_asan_start_switch(const mp_gstack_t* g) {
+  if (g == NULL) {
+    // system stack
+    __sanitizer_start_switch_fiber(NULL, system_stack, system_stack_size);
+  }
+  else {
+    __sanitizer_start_switch_fiber(NULL, g->stack, g->stack_size);
+  }
+}
+
+void mp_debug_asan_end_switch(bool from_system) {
+  const void* old;
+  size_t old_size;
+  __sanitizer_finish_switch_fiber(NULL, &old, &old_size);
+  if (from_system) {
+    system_stack = old;
+    system_stack_size = old_size;
+  }
+}
+
+#endif

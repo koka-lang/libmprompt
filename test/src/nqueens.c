@@ -47,6 +47,7 @@ static void test(int n, int expect) {
   int len = blist_length(xss);
   mpt_printf("nqueens %2d: %d\n", n, len);
   mpt_assert(expect == len, "nqueens");
+  // note: xss leaks but it has shared sublists so we need a region allocator or ref counting to dispose of it properly
 }
 
 
