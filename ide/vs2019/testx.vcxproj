@@ -35,6 +35,7 @@
     <ClCompile Include="..\..\test\src\reader.c" />
     <ClCompile Include="..\..\test\src\rehandle.c" />
     <ClCompile Include="..\..\test\src\throw.cpp" />
+    <ClCompile Include="..\..\test\src\triples.c" />
     <ClCompile Include="..\..\test\test_mpe_main.c">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>

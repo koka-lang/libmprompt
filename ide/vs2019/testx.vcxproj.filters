@@ -61,5 +61,8 @@
     <ClCompile Include="..\..\test\test_mp_async.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\test\src\triples.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

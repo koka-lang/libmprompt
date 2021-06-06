@@ -51,7 +51,9 @@ static void test_c(void) {
   // multi-shot tests
   amb_run();
   amb_state_run();
+
   nqueens_run();
+  triples_run();
 }
 
 

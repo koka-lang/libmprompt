@@ -33,6 +33,7 @@ void counter_run(void);
 void countern_run(void);
 void mstate_run(void);
 void nqueens_run(void);
+void triples_run(void);
 void amb_run(void);
 void amb_state_run(void);
 void rehandle_run(void);

@@ -154,6 +154,7 @@ public:
   mpe_raii_with_frame_t(mpe_frame_t* f) {
     this->f = f;
     f->parent = mpe_frame_top;
+    mpe_assert_internal(f->parent != f);
     mpe_frame_top = f;
   }
   ~mpe_raii_with_frame_t() {
@@ -279,6 +280,7 @@ static void* mpe_perform_yield_to(mpe_resumption_kind_t rkind, mpe_frame_handle_
   mpe_resume_env_t* renv = (mpe_resume_env_t*)mp_yield(h->prompt, &mpe_perform_op_clause, &penv);
   // resumed!                     
   h->local = renv->local;           // set new state
+  mpe_assert_internal(mpe_frame_top != &h->frame);
   h->frame.parent = mpe_frame_top;  // relink handlers
   mpe_frame_top = resume_top;
   if (renv->unwind) {
@@ -295,6 +297,7 @@ static void* mpe_perform_op_clause_abort(mp_resume_t* mpr, void* earg) {
 }
 
 static void* mpe_perform_yield_to_abort(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
+  mpe_frame_top = h->frame.parent;           // unlink handlers
   mpe_perform_env_t env = { MPE_RESUMPTION_SCOPED_ONCE /* unused */, op->opfun, h->local, arg };
   return mp_yield(h->prompt, &mpe_perform_op_clause_abort, &env);
 }
