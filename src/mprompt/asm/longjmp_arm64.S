@@ -54,16 +54,26 @@ jmpbuf layout:
  192: sizeof jmpbuf
 */
 
+.align 2
 .global mp_setjmp
 .global mp_longjmp
 .global mp_stack_enter
 
+#if defined(__MACH__)
+.global _mp_setjmp
+.global _mp_longjmp
+.global _mp_stack_enter
+#endif
+
+#if !defined(__clang__)
 .type mp_setjmp,%function
 .type mp_longjmp,%function
 .type mp_stack_enter,%function
 .type abort,%function
+#endif 
 
 /* called with x0: &jmp_buf */
+_mp_setjmp:
 mp_setjmp:                 
   stp   x18, x19, [x0], #16
   stp   x20, x21, [x0], #16
@@ -88,6 +98,7 @@ mp_setjmp:
 
 
 /* called with x0: &jmp_buf */
+_mp_longjmp:
 mp_longjmp:                  
   ldp   x18, x19, [x0], #16
   ldp   x20, x21, [x0], #16
@@ -133,6 +144,7 @@ mp_longjmp:
 #define DW_REG_ELR_mode           33
 #define DW_REG_v0                 64
 
+_mp_stack_enter:
 mp_stack_enter:
   .cfi_startproc 
   .cfi_signal_frame             /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
@@ -177,7 +189,11 @@ mp_stack_enter:
   blr     x4                    /* and call the function */
 
   /* should never get here */
+  #if defined(__MACH__)
+  bl      _abort
+  #else
   bl      abort
+  #endif
 
   .cfi_restore_state
   ldr     x0, [sp, #8]          /* load jmpbuf_t* and longjmp back */
