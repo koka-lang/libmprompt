@@ -537,7 +537,7 @@ programming. In particular,
   can be used across libraries/languages and is thus more
   composable than using multi-prompts directly.
 
-See [`effects.c`](test/effects.c) for many examples of common 
+See [`common_effects.c`](test/common_effects.c) for many examples of common 
 effect patterns.
 
 ```C
