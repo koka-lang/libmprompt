@@ -32,6 +32,7 @@ set(test_mpe_main_sources
     test/src/nqueens.c
     test/src/rehandle.c
     test/src/triples.c
+    test/src/sphinx.c
     test/test_mpe_main.c)    
 
 if (NOT MP_USE_C)
