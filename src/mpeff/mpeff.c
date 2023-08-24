@@ -132,6 +132,7 @@ struct mpe_resume_s {
     void**        plocal;           // kind == MPE_RESUMPTION_INPLACE
     mp_resume_t*  resume;           // kind == MPE_RESUMPTION_SCOPED_ONCE || MPE_RESUMPTION_ONCE || MPE_RESUME_MULTI
   } mp;
+  bool resumed;
 };
 
 
@@ -302,6 +303,10 @@ static void* mpe_perform_yield_to_abort(mpe_frame_handle_t* h, const mpe_operati
   return mp_yield(h->prompt, &mpe_perform_op_clause_abort, &env);
 }
 
+// Id function for resuming
+static void* id(mp_resume_t* mpr, void* arg) {
+  return arg;
+}
 
 // Tail resumptive under an "under" frame
 static void* mpe_perform_under(mpe_frame_handle_t* h, const mpe_operation_t* op, void* arg) {
@@ -309,11 +314,16 @@ static void* mpe_perform_under(mpe_frame_handle_t* h, const mpe_operation_t* op,
   f.frame.effect = MPE_EFFECT(mpe_frame_under);
   f.under = h->frame.effect;
   void* result = NULL;
+  mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, { &h->local }, false };
   {mpe_with_frame(&f.frame) {
-    mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, { &h->local } };
     result = (op->opfun)(&resume, h->local, arg);
   }}
-  return result;
+
+  if (resume.resumed) {
+    return result;
+  } else {
+    return mp_yield(h->prompt, &id, result);
+  }
 }
 
 // ------------------------------------------------------------------------------
@@ -325,8 +335,13 @@ static void* mpe_perform_at(mpe_frame_handle_t* h, const mpe_operation_t* op, vo
   mpe_assert_internal(opkind == op->opkind);
   if (mpe_likely(opkind == MPE_OP_TAIL_NOOP)) {
     // tail resumptive, calls no operations, execute in place
-    mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, { &h->local } };
-    return (op->opfun)(&resume, h->local, arg);
+    mpe_resume_t resume = { MPE_RESUMPTION_INPLACE, { &h->local }, false };
+    void* result = (op->opfun)(&resume, h->local, arg);
+    if (resume.resumed) {
+      return result;
+    } else {
+      return mp_yield(h->prompt, &id, result);
+    }
   }
   else if (mpe_likely(opkind == MPE_OP_TAIL)) {
     // tail resumptive; execute in place under an "under" frame
@@ -497,16 +512,19 @@ static void mpe_resume_unwind(mpe_resume_t* r) {
 
 // Last use of a resumption
 void* mpe_resume_final(mpe_resume_t* resume, void* local, void* arg) {
+  resume->resumed = true;
   return mpe_resume_internal(true, resume, local, arg, false);
 }
 
 // Regular resume
 void* mpe_resume(mpe_resume_t* resume, void* local, void* arg) {
+  resume->resumed = true;
   return mpe_resume_internal(false, resume, local, arg, false);
 }
 
 // Last resume in tail-position
 void* mpe_resume_tail(mpe_resume_t* resume, void* local, void* arg) {  
+  resume->resumed = true;
   if (mpe_likely(resume->kind == MPE_RESUMPTION_INPLACE)) {
     *resume->mp.plocal = local;
     return arg;
