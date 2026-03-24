@@ -149,7 +149,7 @@ mp_stack_enter:
   .cfi_startproc 
   .cfi_signal_frame             /* needed or else gdb does not allow switching frames to a lower address in the backtrace */
   
-  stp     fp, lr, [sp, #16]!    /* link frame (seems needed for libunwind) */
+  stp     fp, lr, [sp, #-16]!    /* link frame (seems needed for libunwind) */
   .cfi_adjust_cfa_offset 32
   .cfi_rel_offset lr, 24
   .cfi_rel_offset fp, 16
