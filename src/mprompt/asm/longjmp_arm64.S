@@ -119,7 +119,7 @@ mp_longjmp:
   ldp   d14, d15, [x0], #16
   /* always return 1 */
   mov   x0, #1
-  ret                         /* jump to lr */
+  br    x30          /* jump to lr */
 
 
 /* switch stack 
