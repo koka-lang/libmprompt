@@ -37,7 +37,7 @@ void triples_run(void);
 void amb_run(void);
 void amb_state_run(void);
 void rehandle_run(void);
-
+void sphinx_run(void);
 
 #ifdef __cplusplus
 void throw_run(void);
